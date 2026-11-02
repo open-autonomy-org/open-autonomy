@@ -1,6 +1,7 @@
 // Selected native runtime observation, through its public SDK (ADR 0026). Worker harness is not home flavor.
 import { isAbsolute, resolve } from 'node:path';
 import type { SupercodeHarnessClient, RunsQuery, SessionDescriptor, RequestOptions } from '@volter/supercode-harness-sdk';
+import { NativeContinuity } from './native-continuity.ts';
 
 export type NativeRuntimeSelection = { kind: 'hermes' | 'orchestrator'; root: string };
 export type NativeProfile = {
@@ -28,7 +29,8 @@ export function nativeRuntime(config: { native_runtime?: unknown; hermes_home?: 
 }
 
 export class NativeRuntime {
-  constructor(readonly selected: NativeRuntimeSelection, private readonly sc: SupercodeHarnessClient) {}
+  readonly continuity: NativeContinuity;
+  constructor(readonly selected: NativeRuntimeSelection, private readonly sc: SupercodeHarnessClient) { this.continuity = new NativeContinuity(sc); }
   get native(): boolean { return this.selected.kind === 'orchestrator'; }
   get root(): string { return this.selected.root; }
   get homes(): { hermes?: string; orchestrator?: string } {

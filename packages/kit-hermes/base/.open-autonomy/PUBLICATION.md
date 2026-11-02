@@ -82,6 +82,10 @@ manifest with `version:1`, `account`, `apiBase`, `sourceContext`, `stores`, `ope
   update receipt, or `{kind:'legacy-noted',key:legacyKey}` preserving suppression without claiming verified content.
 - `sessions`: `{platformKey,nativeSessionId,associationKey?,itemId?,evidence}` for every retained checkpoint,
   retaining existing continuation keys and positively observed item bindings. Unknown attribution remains unknown.
+  Source-qualified continuity additionally retains `audience` (the exact publisher policy identity) and `origin`:
+  `{canonicalSession,instance,native,bindingEvidence}`. `native` is the full public `sessionOrigin` readback while that
+  exact original source was active; `bindingEvidence` must equal the frozen evidence. This uses reporter v4 and is
+  refused before actual retained-owner capable-pair admission. A later move's raw ID cannot fill the missing origin.
 
 Bounded `item()` reads can establish a positive receipt match, but cannot prove an older note absent. Replaying
 an unknown note ID as a lookup could create it and is forbidden. Titles, current uniqueness, paths, view names
@@ -102,6 +106,28 @@ The publisher then obtains a genuine full native snapshot. It retains old IDs, a
 sequence/digest/end receipts, continuation counters and paused native IDs. Changed adoption inputs refuse.
 
 ## Ownership, moves and retries
+
+Native instance continuity follows [ADR 0036](https://github.com/open-autonomy-org/open-autonomy/blob/main/docs/decisions/0036-publication-follows-proved-session-instances.md).
+Reporter version 4 retains the original native ID, platform key and binding evidence, adding an ordered receipt-backed
+alias chain. An intent is durable before reader replacement; only a committed alias whose actual destination revision
+matches the acknowledged OA wire prefix selects that reader. Exact native source/machine/incarnation provenance,
+current family activation and the frozen positive card association are required. A legacy raw native ID, workspace
+match or copied conversation cannot establish that provenance. Missing provenance needs explicit source-qualified
+adoption; no historical aliases are inferred.
+
+Reconciliation includes intake redaction, clipping, tool results and timestamps. It checks the checkpoint and every
+available remote tail receipt before appending. An uncertain acknowledged batch must be covered by those receipts.
+Short, divergent or advancing inconsistent history remains pending; migration cannot end the old publication or mint
+a continuation key. Existing ended checkpoints stay ended. Instance retirement and source absence are not canonical
+completion. The four transcript lanes remain independent; one family's reader is replaced only after the exact old
+reader has retired. Unknown retirement holds that family and retains ownership on shutdown.
+
+The retained kit owner must qualify the actual candidate and capable rollback, their exact publication/native inputs
+and alias behavior before the first version-4 write. Prepared install receipts inventory the source-bound reader and
+native selection; an inventory, JSON preservation or version match is not behavioral qualification. The owner status
+reports `publication_continuity.issuance: closed` until that qualification exists. There is no configuration flag or
+automatic legacy fallback which opens it. Native migration admission is separate. Version-4 journal base conflicts
+and torn appends retain their bytes and refuse publication effects.
 
 One publisher owns a state directory and account timeline. Its owner controller holds the same private
 `<reporter-state>.lock` in both control-only and narrative modes. The narrative store reuses an explicit verified

@@ -1,8 +1,11 @@
 // Publication policy and delivery only. Volter Harness owns native reconstruction and lifecycle.
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import type { NormalizedMessage, SessionDescriptor, SupercodeHarnessClient } from '@volter/supercode-harness-sdk';
 import { OpenAutonomy, Session, type SessionEnd, type SessionStart, type Turn } from './sdk/client.ts';
 import { startWork, recordWork, measureWork } from './work-ledger.ts';
+import { redactDeep } from './sdk/redaction.ts';
+import { ContinuityPending, continuityDigest, type ContinuityReceipt, type AliasReconciliation } from './session-continuity.ts';
 
 export interface PublicationPolicy { runs: boolean; chats: boolean; private: string[] }
 export function publicationPolicy(value: unknown): PublicationPolicy {
@@ -50,6 +53,77 @@ class PrefixDigest {
 }
 export interface PublicationCheckpoint { seq: number; digest: string; endedAt?: string }
 export type RecordedCompletion = Pick<SessionEnd, 'endedAt' | 'outcome'> & { endedAt: string };
+// This is the actual public wire policy, including intake redaction and post-redaction clipping. Ordinary
+// publication retains its existing checkpoint policy; a migration cannot call a raw native digest a wire proof.
+const clipWire = (v: string | undefined, n: number): string | undefined => !v ? undefined : v.length > n ? `${v.slice(0,n-1)}…` : v;
+export function wireTurnsOf(message: NormalizedMessage, harness: string): Turn[] {
+  return turnsOf(message, harness).map(turn => {
+    const t = redactDeep(turn) as Turn;
+    return { role: t.role, ...(t.ts ? { ts: t.ts } : {}),
+      ...Object.fromEntries((['text','tool','args','result'] as const).flatMap(key => {
+        const value = clipWire(t[key], key === 'text' ? 2000 : key === 'tool' ? 80 : 600);
+        return value ? [[key,value]] : [];
+      })) };
+  });
+}
+export const publicationWirePolicy = (): string => createHash('sha256')
+  .update(readFileSync(new URL('./reporting.ts', import.meta.url)))
+  .update(readFileSync(new URL('./sdk/redaction.ts', import.meta.url))).digest('hex');
+// Only observed transcript fields are needed. A hosted revision is not fabricated into a native on-disk session.
+export interface TranscriptWindow {
+  session: { messages: NormalizedMessage[]; ended_at?: string | null; end_reason?: string | null };
+  summary: { last_assistant_text?: string };
+  window: { offset: number; returned: number; total_messages: number; has_newer: boolean };
+}
+export interface WindowReader { loadWindow(locator: SessionDescriptor['locator'], options?: Parameters<SupercodeHarnessClient['loadWindow']>[1]): Promise<TranscriptWindow> }
+export interface AliasPublication {
+  receipt: ContinuityReceipt;
+  readerRevision: number;
+  // Reads are bound by the native adapter to an immutable revision of the actual destination instance.
+  assertCurrent(): Promise<void>;
+  verified(reconciliation: AliasReconciliation): Promise<void>;
+}
+// Read the whole acknowledged prefix before any OA effect. A lost last-batch answer is recoverable only when every
+// turn after the checkpoint is present in the remote tail; no guessed offset or replay hides missing evidence.
+export async function verifySessionAliasPrefix(sc: WindowReader, oa: OpenAutonomy, account: string, descriptor: SessionDescriptor,
+  key: string, checkpoint: PublicationCheckpoint | undefined, receipt: ContinuityReceipt): Promise<AliasReconciliation> {
+  if (!checkpoint || !Number.isSafeInteger(checkpoint.seq) || checkpoint.seq < 0 || !/^[0-9a-f]{64}$/.test(checkpoint.digest))
+    throw new ContinuityPending('the frozen publication has no acknowledged prefix checkpoint');
+  const remote = await oa.session(account,key);
+  if (!remote || !Number.isSafeInteger(remote.next_seq) || remote.next_seq < checkpoint.seq)
+    throw new ContinuityPending('the destination is absent or behind its retained acknowledgement');
+  if (remote.status !== 'live' && !checkpoint.endedAt) throw new ContinuityPending('remote end has no retained canonical completion');
+  const retained = new Map<number,Turn>();
+  for (const turn of remote.turns) {
+    if (!Number.isSafeInteger(turn.seq) || turn.seq! < 0 || turn.seq! >= remote.next_seq || retained.has(turn.seq!))
+      throw new ContinuityPending('remote tail has ambiguous sequence receipts');
+    retained.set(turn.seq!,turn);
+  }
+  for (let at = checkpoint.seq; at < remote.next_seq; at++) if (!retained.has(at))
+    throw new ContinuityPending(`uncertain batch lacks remote receipt for sequence ${at}`);
+  const prefix = new PrefixDigest();
+  let matched = 0, verified = checkpoint.seq === 0 && prefix.digest() === checkpoint.digest, offset = 0;
+  for (;;) {
+    const page = await sc.loadWindow(descriptor.locator,{...WINDOW,message_offset:offset});
+    if (page.window.offset !== offset) throw new ContinuityPending('destination revision window moved');
+    for (const turn of page.session.messages.flatMap(message => wireTurnsOf(message,descriptor.locator.harness))) {
+      const at = prefix.count;
+      if (at >= remote.next_seq) break;
+      prefix.add(turn);
+      if (prefix.count === checkpoint.seq) verified = prefix.digest() === checkpoint.digest;
+      const held = retained.get(at);
+      // Migration needs exact wire equality. A pending tool placeholder cannot prove a different actual result.
+      if (held) { if (canonical(held) !== canonical(turn)) throw new ContinuityPending(`destination wire prefix differs at sequence ${at}`); matched++; }
+    }
+    offset += page.window.returned;
+    if (prefix.count >= remote.next_seq || !page.window.has_newer) break;
+    if (!page.window.returned) throw new ContinuityPending('destination revision window did not advance');
+  }
+  if (!verified || prefix.count < remote.next_seq || matched !== retained.size)
+    throw new ContinuityPending('destination prefix is short or does not match all retained acknowledgements');
+  return { receiptDigest:continuityDigest(receipt),destinationRevision:receipt.destination_revision,
+    destinationManifest:receipt.destination_manifest_sha256,wirePolicy:publicationWirePolicy(),checkpoint:{...checkpoint},remoteSeq:remote.next_seq };
+}
 // Media in a source window is read as a reference (its type and size), never its inline bytes: no turn carries media.
 const WINDOW = { message_limit: 500, inline_media: 'metadata' as const };
 const BATCH = 100;
@@ -62,9 +136,10 @@ export class TranscriptPublisher {
   private pending?: Promise<PublicationCheckpoint>;
   // The source as the last completed reconciliation found it; an unchanged source has nothing more to publish.
   private observed?: string;
-  constructor(private readonly sc: Pick<SupercodeHarnessClient, 'loadWindow'>, private readonly oa: OpenAutonomy,
+  constructor(private readonly sc: WindowReader, private readonly oa: OpenAutonomy,
     private readonly account: string, readonly descriptor: SessionDescriptor, readonly start: SessionStart,
-    private checkpoint?: PublicationCheckpoint, private readonly save?: (checkpoint: PublicationCheckpoint) => void) {}
+    private checkpoint?: PublicationCheckpoint, private readonly save?: (checkpoint: PublicationCheckpoint) => void,
+    private readonly alias?: AliasPublication, private readonly guard?: () => Promise<void>) {}
 
   publish(completion?: RecordedCompletion): Promise<PublicationCheckpoint> {
     if (this.checkpoint?.endedAt) return Promise.resolve(this.checkpoint); // ended and published: append-only, so nothing more can follow
@@ -93,11 +168,20 @@ export class TranscriptPublisher {
   private async reconcile(completion?: RecordedCompletion): Promise<PublicationCheckpoint> {
     // The platform's key: the session's own id, or a continuation of it (`<id>~<n>`) once its source was rewritten.
     const key = this.start.key;
+    let aliasReconciliation: AliasReconciliation | undefined;
+    if (this.alias) {
+      await this.alias.assertCurrent();
+      const reconciled = aliasReconciliation = await verifySessionAliasPrefix(this.sc,this.oa,this.account,this.descriptor,key,this.checkpoint,this.alias.receipt);
+      reconciled.readerRevision = this.alias.readerRevision;
+      await this.alias.assertCurrent();
+      await this.alias.verified(reconciled);
+    }
     const observed = await this.fingerprint(completion);
     if (this.checkpoint && observed === this.observed) { volume.unchanged++; recordWork('pass', 'publisher.transcript-unchanged', { units: { unchanged: 1 } }); return this.checkpoint; }
     volume.reconciled++;
     const remote = await this.oa.session(this.account, key);
     const seq = remote?.next_seq ?? 0;
+    if (aliasReconciliation && seq !== aliasReconciliation.remoteSeq) throw new ContinuityPending('destination acknowledgement advanced after prefix qualification');
     // The destination is append-only. When what it holds no longer matches what the source says (an older reporter,
     // a lost acknowledgement), no turn is rewritten. Its retained tail and the saved checkpoint are checked against the
     // source's first `seq` turns as they stream past; every turn after them is new.
@@ -115,6 +199,7 @@ export class TranscriptPublisher {
     let session: Session | undefined;
     const destination = async (): Promise<Session> => {
       if (session) return session;
+      await this.guard?.();
       const opened = remote ? new Session(this.oa, key, seq) : await this.oa.open(this.start);
       if (opened.seq !== seq) throw new Error(`${key}: destination advanced; retry reconciliation`);
       return session = opened;
@@ -122,6 +207,8 @@ export class TranscriptPublisher {
     // Persist each acknowledged batch. A crash can leave at most one batch to
     // verify against the platform's retained tail, never an unbounded blind gap.
     const send = async (batch: Turn[]) => {
+      if (this.alias) await this.alias.assertCurrent();
+      await this.guard?.();
       const to = await destination();
       const finish = startWork('pass', 'publisher.delivery');
       try { await to.turns(batch, this.start.item); finish({ ok: true, units: { messages: batch.length } }); }
@@ -130,13 +217,17 @@ export class TranscriptPublisher {
       if (to.seq !== prefix.count) throw new Error(`${key}: destination acknowledged ${to.seq} turns for ${prefix.count}; retry reconciliation`);
       this.checkpoint = { seq: to.seq, digest: prefix.digest() };
       this.save?.(this.checkpoint);
+      if (this.alias && aliasReconciliation) {
+        aliasReconciliation = { ...aliasReconciliation,checkpoint:{...this.checkpoint},remoteSeq:to.seq };
+        await this.alias.verified(aliasReconciliation);
+      }
     };
     let offset = 0, report: string | undefined, nativeCompletion: RecordedCompletion | undefined;
     for (;;) {
       const page = await this.readWindow({ ...WINDOW, message_offset: offset });
       if (page.window.offset !== offset) throw new Error(`${key}: source window moved; retry reconciliation`);
       volume.windows++; volume.messages += page.window.returned;
-      for (const turn of page.session.messages.flatMap(m => turnsOf(m, this.descriptor.locator.harness))) {
+      for (const turn of page.session.messages.flatMap(m => this.alias ? wireTurnsOf(m,this.descriptor.locator.harness) : turnsOf(m, this.descriptor.locator.harness))) {
         const at = total++;
         if (standIn(turn)) { if (!standIns++ && at < seq) standInsFrom = { at, digest: prefix.digest() }; }
         else { standIns = 0; standInsFrom = undefined; }
@@ -163,7 +254,8 @@ export class TranscriptPublisher {
       if (!page.window.has_newer) break;
       if (!page.window.returned) throw new Error(`${key}: source window did not advance`);
     }
-    const ended = completion ?? nativeCompletion;
+    // Source retirement and a copied instance's native end are not the continued canonical lifecycle.
+    const ended = completion ?? (this.alias ? undefined : nativeCompletion);
     if (!ended && standIns) { total -= standIns; fresh.length -= Math.min(standIns, fresh.length); }
     if (seq > total || matched !== retained.size) diverged = true;
     // The digest of the source's first min(seq, total) turns, for a destination settled where it stands.
@@ -171,6 +263,7 @@ export class TranscriptPublisher {
     // A diverged destination keeps what it holds. But a session that has ended is ended: its end is published over the
     // transcript as it stands, so the books never call a finished session live.
     if (diverged) {
+      if (this.alias) throw new ContinuityPending('destination prefix changed after qualification; no end, append or continuation was issued');
       // A destination that is no longer live cannot be reconciled and never will be: the source's earlier turns were
       // rewritten (Hermes compresses a long run) and nothing may be rewritten here. What the platform holds is the
       // record. Settle it at the checkpoint instead of reloading the whole session from the source every minute for
@@ -185,11 +278,11 @@ export class TranscriptPublisher {
       // boundary) goes on as a continuation: its published record ends at its last turn, and the source is published
       // again from its first turn under the next key.
       if (!ended && remote) {
-        if (remote.status === 'live') await new Session(this.oa, key, seq).end({ endedAt: remote.turns.at(-1)?.ts ?? new Date().toISOString(), item: this.start.item });
+        if (remote.status === 'live') { await this.guard?.(); await new Session(this.oa, key, seq).end({ endedAt: remote.turns.at(-1)?.ts ?? new Date().toISOString(), item: this.start.item }); }
         throw new SourceRewritten(key);
       }
       if (!ended || !remote) throw new Error(`${key}: published history changed; append-only destination needs reconciliation`);
-      await new Session(this.oa, key, seq).end({ ...ended, report, item: this.start.item });
+      await this.guard?.(); await new Session(this.oa, key, seq).end({ ...ended, report, item: this.start.item });
       const checkpoint: PublicationCheckpoint = { seq, digest: settledDigest(), endedAt: ended.endedAt };
       this.checkpoint = checkpoint;
       this.save?.(checkpoint);
@@ -199,6 +292,8 @@ export class TranscriptPublisher {
     const to = await destination();
     const checkpoint: PublicationCheckpoint = { seq: to.seq, digest: prefix.digest() };
     if (ended) {
+      if (this.alias) await this.alias.assertCurrent();
+      await this.guard?.();
       await to.end({ ...ended, report, item: this.start.item });
       checkpoint.endedAt = ended.endedAt;
     }

@@ -52,6 +52,8 @@ import { nativeRuntime, NativeRuntime } from './native-runtime.ts';
 import { OwnerControlState, OwnerController } from './owner-control.ts';
 import { PublicationStore } from './publication.ts';
 import { TranscriptQueue } from './transcript-queue.ts';
+import { ContinuityPending, continuityDigest, continuityOwner } from './session-continuity.ts';
+import type { ContinuityReadback } from './native-continuity.ts';
 import { initializeWorkLedger, closeWorkLedger, recordWork, measureWork, responseWork, spawnWork, stopWorkChild } from './work-ledger.ts';
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
@@ -172,7 +174,7 @@ const reader = container ? inContainer([supercode, 'harness', 'serve']) : superc
 // An orchestrator home travels in each query and in the runtime's root. SUPERCODE_HOME stays the machine's supercode
 // home: its source lock and machine door (the session index answers through that door), never the orchestrator's.
 const nativeEnvironment = { ...process.env, ...(selectedRuntime.kind === 'hermes' ? { HERMES_HOME: home } : {}) } as Record<string, string>;
-const sc = new HarnessClient({ command: reader[0], args: reader.slice(1), env: nativeEnvironment });
+const sc: SupercodeHarnessClient = new HarnessClient({ command: reader[0], args: reader.slice(1), env: nativeEnvironment });
 const runtime = new NativeRuntime(selectedRuntime, sc);
 const ownerState = new OwnerControlState(stateFile, { account: cfg.account, apiBase: `${(cfg.platform ?? 'https://open-autonomy.org').replace(/\/$/, '')}/v1`, nativeRuntime: selectedRuntime });
 let quitting = false;
@@ -367,11 +369,23 @@ function retryLater(key: string, delay: number): void {
   }, delay);
 }
 const sessionReaders = new Map<string, SupercodeHarnessClient>();
+// A new native instance routes back onto the original publication's canonical queue key. No destination read or
+// alias write occurs on the newly discovered raw-ID lane while its old canonical lane could still be running.
+const continuityRoutes = new Map<string,{descriptor:SessionDescriptor;readback:ContinuityReadback}>();
+const aliasReaders = new Map<string,{platformKey:string;digest:string;connection:string}>();
 const transcripts = new TranscriptQueue(4,
   () => new HarnessClient({ command: reader[0], args: reader.slice(1), env: nativeEnvironment }),
   publishSession, (key, error) => { if (!quitting) log(`${key}: publication pending (${(error as Error).message})`); },
   reader => reader.close());
-stopTranscripts = () => transcripts.close();
+stopTranscripts = async () => {
+  await transcripts.close();
+  // All exact SDK readers, including a previously unknown close, have now acknowledged retirement. No clean lease
+  // release follows a failed close; that failure leaves the corresponding reader record and owner intact.
+  for (const [key,held] of aliasReaders) {
+    await publication.run(() => publication.retainAliasReader(held.platformKey,held.digest,held.connection,'retired'));
+    aliasReaders.delete(key);
+  }
+};
 // A refused session is said once per reason, then skipped on every pass until the board stops refusing it.
 const refused = new Map<string, string>();
 function refuse(key: string, error: SessionRefused): void {
@@ -383,7 +397,7 @@ function sessions(only?: string): void {
   if (only === undefined) { allSessionsDue = false; sessionsDue.clear(); }
   for (const [at, key] of keys.entries()) {
     if (quitting) return;
-    const d = descriptors.get(key);
+    const d = continuityRoutes.get(key)?.descriptor ?? descriptors.get(key);
     if (!d) continue;
     try {
       if (!runtime.accepts(d, isWorker(d), isSeat(d)) || !publishes(policy, d, kindOf(d), d.recurrence ? jobNames.get(d.recurrence.job_id) : undefined)) continue;
@@ -421,24 +435,36 @@ async function grownPast(key: string, d: SessionDescriptor, reader: SupercodeHar
   resumeChecked.set(key, messages);
   return false;
 }
-async function publishSession(key: string, reader: SupercodeHarnessClient): Promise<void> {
-  const d = descriptors.get(key);
+async function publishSession(key: string, initialReader: SupercodeHarnessClient): Promise<void> {
+  let reader = initialReader;
+  let aliasReader: {platformKey:string;digest:string;connection:string;active:boolean} | undefined;
+  const d = continuityRoutes.get(key)?.descriptor ?? descriptors.get(key);
   if (quitting || !d || stopped.has(key) || (retryAt.get(key) ?? 0) > Date.now()) return;
   try {
     if (!runtime.accepts(d, isWorker(d), isSeat(d)) || !publishes(policy, d, kindOf(d), d.recurrence ? jobNames.get(d.recurrence.job_id) : undefined)) return;
   } catch (error) { if (error instanceof SessionRefused) { refuse(key, error); return; } throw error; }
   sessionReaders.set(key, reader);
   try {
+    const followsNative = onOrchestrator && isWorker(d) && runtime.continuity.available;
+    const continuity = followsNative ? await runtime.continuity.read(continuityRoutes.get(key)?.readback.canonical_session ?? `${d.locator.harness}:${d.locator.session_id}`,narrativeRead) : undefined;
+    const move = continuity?.receipt ? continuity : undefined;
+    const family = move ? publication.sessionFamily(move.canonical_session) : undefined;
+    if (move && !family) throw new ContinuityPending('native move has no retained source-qualified original publication; explicit adoption is required');
+    if (move && family!.nativeSessionId !== key) {
+      continuityRoutes.set(family!.nativeSessionId,{descriptor:d,readback:move});
+      transcripts.enqueue(family!.nativeSessionId); return;
+    }
     // A session published to its end that its card resumed continues as `<id>~<n>` only once its source holds more
     // turns than that end published. A resume that never ran or an older end the board outlived adds nothing to it.
     const published = checkpoints[platformKey(key)];
+    if (published?.endedAt && move) return; // an instance move cannot reopen an ended OA publication
     if (published?.endedAt) {
       if (!await grownPast(key, d, reader, published.seq)) return;
       continueSession(key);
       log(`${key}: resumed after its published end; continues as ${platformKey(key)}`);
     }
     const pkey = platformKey(key);
-    const exactAttempt = attemptOf(key);
+    const exactAttempt = attemptOf(d.locator.session_id) ?? attemptOf(key);
     const launched = exactAttempt?.task;
     const candidates = launched ? [launched] : (organization ? boardTasksAll : nativeTasks).filter(t => t.workspace?.path && t.workspace.path === (d.cwd ?? d.workspace?.value));
     if (organization && (candidates.length === 1 ? !ours(candidates[0].tags?.[0] ?? candidates[0].tenant) : Boolean(tenant))) {
@@ -447,13 +473,57 @@ async function publishSession(key: string, reader: SupercodeHarnessClient): Prom
     }
     const candidate = (launched || d.trigger === 'task' || isSeat(d) || isWorker(d)) && candidates.length === 1 ? candidates[0] : undefined;
     const association = candidate ? publication.association(candidate.board, candidate.id) : undefined;
+    const evidence = exactAttempt ? `native-attempt:${exactAttempt.first.id}` : candidate ? `workspace:${d.cwd ?? d.workspace?.value ?? ''}` : 'unknown';
+    const audience = continuityDigest({policy,tenant:tenant ?? null,elsewhere,kind:kindOf(d),profile:d.profile,source:sourceOf(d),seats:cfg.seats ?? null});
+    if (move) {
+      if (!family?.origin || association?.key !== family.associationKey || association?.itemId !== family.itemId)
+        throw new ContinuityPending('destination does not agree with the frozen positive card/item association');
+      const receipt = move.receipt!;
+      if (receipt.generation === 1 && continuityDigest(continuityOwner((family.origin.native as any).owner))
+        !== continuityDigest(continuityOwner(move.provenance?.source_origin.owner)))
+        throw new ContinuityPending('first alias native ownership differs from the retained original qualification');
+      const alias = await publication.run(() => publication.prepareSessionAlias(family.platformKey,receipt,family.origin!,audience));
+      // The intent above is durable before the exact old reader is retired and any destination page is read.
+      const oldConnection = transcripts.readerIdentity(key,reader);
+      await publication.run(() => publication.retainAliasReader(family.platformKey,alias.receiptDigest,oldConnection,'replacing'));
+      aliasReader = {platformKey:family.platformKey,digest:alias.receiptDigest,connection:oldConnection,active:false};
+      aliasReaders.set(key,aliasReader);
+      reader = await transcripts.replaceReader(key,reader); sessionReaders.set(key,reader);
+      aliasReader = {...aliasReader,connection:transcripts.readerIdentity(key,reader),active:true}; aliasReaders.set(key,aliasReader);
+      await publication.run(() => publication.retainAliasReader(family.platformKey,alias.receiptDigest,aliasReader!.connection,'active'));
+      const native = await runtime.continuity.revisionReader(receipt,reader,alias.state === 'verified',narrativeRead);
+      const locator = move.provenance?.materialization?.locator;
+      if (!locator || locator.harness !== receipt.instance.harness || locator.session_id !== receipt.instance.native_session_id)
+        throw new ContinuityPending('public materialization has no exact destination locator');
+      const descriptor = {...d,locator};
+      const completed = exactAttempt?.task.closed && exactAttempt.attempt.ended_at && ran(exactAttempt.attempt)
+        ? {endedAt:exactAttempt.attempt.ended_at,outcome:exactAttempt.attempt.outcome === 'completed' ? 'done' as const : undefined} : undefined;
+      const guard = () => runtime.continuity.assertCurrent(receipt,narrativeRead);
+      const publisher = new TranscriptPublisher(native.reader,oa,cfg.account,descriptor,
+        {key:family.platformKey,kind:kindOf(d),source:sourceOf(d),title:d.title ?? undefined,harness:locator.harness,modelProvider:providerOf(d.profile),item:family.itemId},
+        checkpoints[family.platformKey],checkpoint => saveCheckpoint(family.platformKey,checkpoint),
+        {receipt,readerRevision:native.revision,assertCurrent:guard,verified:async reconciliation => { await publication.run(() => publication.reconcileSessionAlias(family.platformKey,alias.receiptDigest,reconciliation)); }},guard);
+      const delivered = await publisher.publish(completed);
+      continuityRoutes.set(key,{descriptor:d,readback:move});
+      retryAt.delete(key); failures.delete(key);
+      if (delivered.endedAt) stopped.add(key);
+      return;
+    }
+    // A normal reader checks the family again before every OA effect. Activation/retirement between its first read
+    // and an end/append therefore holds publication, even before the committed alias has been discovered.
+    const guard = followsNative ? async () => {
+      const now = await runtime.continuity.read(`${d.locator.harness}:${d.locator.session_id}`,narrativeRead);
+      if (now?.receipt) throw new ContinuityPending('native instance changed during ordinary publication; canonical alias must reconcile first');
+    } : undefined;
+    const origin = publication.canRecordSessionOrigin && followsNative && !publication.sessionBinding(pkey)
+      ? await runtime.continuity.origin(d,evidence,narrativeRead) : undefined;
     const item = await publication.run(() => publication.sessionItem({ platformKey: pkey, nativeSessionId: key, associationKey: association?.key, itemId: association?.itemId,
-      evidence: exactAttempt ? `native-attempt:${exactAttempt.first.id}` : candidate ? `workspace:${d.cwd ?? d.workspace?.value ?? ''}` : 'unknown' }, oa));
+      evidence,audience,...(origin ? {origin} : {}) }, oa));
     const completion = completionOf(d);
     let publisher = publishers.get(key);
     if (!publisher || publisherItems.get(key) !== item) {
       publisher = new TranscriptPublisher({ loadWindow: (locator, options) => sessionReaders.get(key)!.loadWindow(locator, options, { signal: narrativeAbort.signal, timeoutMs: 0 }) }, oa, cfg.account, d, { key: pkey, kind: kindOf(d), source: sourceOf(d), title: d.title ?? undefined, harness: d.locator.harness,
-        modelProvider: isSeat(d) ? 'claude-code' : providerOf(d.profile), startedAt: bindings.get(key)?.started_at ?? undefined, item }, checkpoints[pkey], checkpoint => saveCheckpoint(pkey, checkpoint));
+        modelProvider: isSeat(d) ? 'claude-code' : providerOf(d.profile), startedAt: bindings.get(key)?.started_at ?? undefined, item }, checkpoints[pkey], checkpoint => saveCheckpoint(pkey, checkpoint),undefined,guard);
       publishers.set(key, publisher);
       publisherItems.set(key, item);
     }
@@ -470,7 +540,22 @@ async function publishSession(key: string, reader: SupercodeHarnessClient): Prom
     const failed = (failures.get(key) ?? 0) + 1, delay = Math.min(60_000 * 2 ** (failed - 1), 30 * 60_000);
     failures.set(key, failed); retryAt.set(key, Date.now() + delay); retryLater(key, delay);
     log(`${key}: publication incomplete (${(e as Error).message}); failure ${failed}, next attempt in ${delay / 60_000} min`);
-  } finally { sessionReaders.delete(key); }
+  } finally {
+    if (aliasReader) {
+      try {
+        if (!aliasReader.active) throw new ContinuityPending('old reader replacement did not acknowledge retirement');
+        // A migrated family leaves no live SDK reader behind between passes. Restart can therefore distinguish a
+        // joined connection from a parent which died with that exact connection still active.
+        await transcripts.replaceReader(key,reader);
+        await publication.run(() => publication.retainAliasReader(aliasReader!.platformKey,aliasReader!.digest,aliasReader!.connection,'retired'));
+        aliasReaders.delete(key);
+      } catch (error) {
+        await publication.run(() => publication.retainAliasReader(aliasReader!.platformKey,aliasReader!.digest,aliasReader!.connection,'unknown'));
+        if (!quitting) log(`${key}: exact alias reader retirement remains unknown (${(error as Error).message})`);
+      }
+    }
+    sessionReaders.delete(key);
+  }
 }
 
 // The timeline, published through the SDK as one document in one language: the past from CHANGELOG.md, the

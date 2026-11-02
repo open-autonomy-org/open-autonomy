@@ -10,6 +10,7 @@ import { constants } from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { prepareInstall, readInstall, type InstallReceipt } from '../base/.open-autonomy/prepare-install.ts';
 import { machinePublishedBinding, runtimeInstallIdentity } from '../base/.open-autonomy/install-runtime.ts';
+import { publicationInputs, samePublicationInputs } from '../base/.open-autonomy/publication-inputs.ts';
 
 type Selection = { receipt: string; source: string | null; release?: string | null; native: string | null };
 type Stack = { process: ReturnType<typeof Bun.spawn>; selected: Selection; ready: string };
@@ -66,6 +67,8 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
       registry: receipt.registry, archive: receipt.archive ?? undefined });
     if (identity !== receipt.runtimeIdentity || readFileSync(resolve(dirname(receipt.entry), 'node_modules/.open-autonomy-install'), 'utf8').trim() !== identity)
       throw new Error('kit installation identity changed since preparation');
+    if (!samePublicationInputs(receipt.publicationInputs,publicationInputs(dirname(receipt.entry),selected.source ?? selected.release ?? null)))
+      throw new Error('kit publication reader or exact native inputs changed since preparation');
     return receipt;
   };
   const start = async (selected: Selection, progress: (phase: string) => void = () => {}): Promise<Stack> => {
@@ -109,7 +112,11 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     try { await stack.process.exited; } finally { clearTimeout(bound); rmSync(stack.ready, { force: true }); }
   };
   const status = () => ({ version: 1, protocol: 1, runtime: process.execPath, owner: process.pid, pid: active?.process.pid, state: active && active.process.exitCode === null && active.process.signalCode === null ? 'serving' : 'transitioning',
-    selected: active?.selected, previous, transaction: pending?.id ?? null, phase: pending?.phase ?? null, failure });
+    selected: active?.selected, previous, transaction: pending?.id ?? null, phase: pending?.phase ?? null, failure,
+    publication_continuity: { protocol:'oa-publication-alias.v1',issuance:'closed',
+      reason:'No actual source-bound candidate/rollback behavioral qualification is retained; input inventory alone cannot admit reporter v4',
+      candidate:active ? readInstall(active.selected.receipt,home).publicationInputs ?? null : null,
+      rollback:previous ? readInstall(previous.receipt,home).publicationInputs ?? null : null } });
   const rollback = async (progress: (phase: string) => void = () => {}) => {
     if (!pending) return status();
     const held = pending;

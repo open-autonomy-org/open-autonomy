@@ -8,6 +8,7 @@ import { OpenAutonomy, EVENT_TYPES, TIMELINE_EVENT_TYPE, updateEvent, type Cloud
 import { normalizeRoadmap, type Roadmap } from './sdk/roadmap.ts';
 import { sameRoadmap } from './sdk/drivers.ts';
 import { redactDeep, redactSecrets } from './sdk/redaction.ts';
+import { checkAliasChain, checkOriginEvidence, continuityDigest, continuityReceipt, sameContinuity, nativeInstance, ContinuityPending, type OriginEvidence, type SessionAlias, type AliasReconciliation, type ContinuityReceipt } from './session-continuity.ts';
 
 export interface SourceCard { readonly publicationId: string; readonly sequence: number; readonly board: string; readonly card: Readonly<Record<string, any>> }
 export interface SourceSnapshot { readonly sourceContextId: string; readonly cards: readonly SourceCard[]; readonly proposedCursor: string }
@@ -18,13 +19,14 @@ interface Custody { version: 1; generation: number; account: string; apiBase: st
 interface Association { key: string; tuple: [string, number, string, string, string]; itemId: string }
 type NoteKind = 'review' | 'handoff';
 interface NoteAlias { associationKey: string; kind: NoteKind; nativeEffectId: string; noteId: string; legacyKey?: string; effectDigest?: string; acknowledgement?: UpdateRecord | { kind: 'legacy-noted'; key: string } }
-export interface SessionBinding { platformKey: string; nativeSessionId: string; associationKey?: string; itemId?: string; evidence: string }
+export interface SessionBinding { platformKey: string; nativeSessionId: string; associationKey?: string; itemId?: string; evidence: string; audience?: string; origin?: OriginEvidence; aliases?: SessionAlias[] }
 interface Pending { obligationId: string; kind: 'note' | 'timeline'; associationKey?: string; wire: string; wireDigest: string; expected: any; sourceObservation?: SourceSnapshot }
 interface Receipt extends Omit<Pending, 'sourceObservation'> { result: any }
 // One committed change to the reporter state, as its journal holds it. A runtime entry sets one key of a runtime map
 // (a session's transcript checkpoint, its continuation count); the others are the publication's own changes.
 type StateChange = { kind: 'runtime'; field: RuntimeField; key: string; value: unknown } | { kind: 'associations'; add: Association[] }
   | { kind: 'pending'; pending: Pending; alias?: NoteAlias } | { kind: 'receipt'; receipt: Receipt } | { kind: 'binding'; binding: SessionBinding }
+  | { kind: 'session-alias'; binding: SessionBinding }
   | { kind: 'snapshot-acknowledged' };
 type RuntimeField = 'published' | 'continuations';
 const runtimeFields = new Set<string>(['published', 'continuations']);
@@ -66,7 +68,22 @@ function applyChange(runtime: Record<string, any>, data: PublicationData, change
       return;
     }
     case 'binding':
+    case 'session-alias':
       if (!change.binding || !nonempty(change.binding.platformKey)) throw new Error('Reporter session binding change malformed');
+      {
+        const old = data.sessionBindings.find(b => b.platformKey === change.binding.platformKey);
+        if (old?.origin) {
+          if (old.nativeSessionId !== change.binding.nativeSessionId || old.evidence !== change.binding.evidence
+            || old.associationKey !== change.binding.associationKey || old.itemId !== change.binding.itemId || old.audience !== change.binding.audience || !eq(old.origin,change.binding.origin))
+            throw new Error('Alias change cannot replace frozen publication provenance');
+        }
+        if (old?.aliases?.length) {
+          const next = change.binding.aliases;
+          if (!next || next.length < old.aliases.length || next.length > old.aliases.length + 1
+            || old.aliases.some((alias,index) => !eq(alias.receipt,next[index]?.receipt) || alias.receiptDigest !== next[index]?.receiptDigest
+              || (index < old.aliases!.length-1 && !eq(alias,next[index])))) throw new Error('Alias change cannot discard or replace retained chain evidence');
+        }
+      }
       data.sessionBindings = [...data.sessionBindings.filter(b => b.platformKey !== change.binding.platformKey), change.binding];
       return;
     case 'snapshot-acknowledged': data.requiresSnapshot = false; return;
@@ -75,7 +92,10 @@ function applyChange(runtime: Record<string, any>, data: PublicationData, change
 }
 interface PublicationData { enrollment: { version: 1; account: string; apiBase: string; sourceContext: string; stores: StoreContext[]; selectedRuntime: NativeRuntimeSelection; custody: Custody; custodyDigest: string; adoptionDigest?: string }; associations: Association[]; noteAliases: NoteAlias[]; sessionBindings: SessionBinding[]; pending: Pending[]; receipts: Receipt[]; requiresSnapshot?: boolean }
 export interface PublicationOwnerLease { readonly stateFile: string; readonly nonce: string; assert(stateFile: string): void }
-export interface PublicationOptions { configFile: string; localDirectory?: string; stateFile: string; cacheFile: string; publication: unknown; account: string; apiBase: string; nativeRuntime: NativeRuntimeSelection; owner?: PublicationOwnerLease }
+// The retained install owner supplies this after source-bound capable-pair qualification. A local declaration,
+// environment flag or version match cannot construct it through the publisher's configuration.
+export interface PublicationContinuityAdmission { assert(): void }
+export interface PublicationOptions { configFile: string; localDirectory?: string; stateFile: string; cacheFile: string; publication: unknown; account: string; apiBase: string; nativeRuntime: NativeRuntimeSelection; owner?: PublicationOwnerLease; continuityAdmission?: PublicationContinuityAdmission }
 export interface NoteInput { board: string; cardId: string; kind: NoteKind; effectId: string | number; text: string; at?: string; session?: string; legacyKey?: string }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const itemId = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
@@ -395,13 +415,15 @@ export class PublicationStore {
   private torn = false;
   private stateBytes = 0;
   private journalBytes = 0;
+  private version: 3 | 4 = 3;
   private observed?: { observation?: SourceSnapshot; cards: ReadonlyMap<string, Readonly<Record<string, any>>> };
   private readonly views = new WeakMap<SourceCard, Readonly<Record<string, any>>>();
   // The retained associations by key. Every pass looks up each card's and each note's association, so a scan of the
   // list (with the key's hash recomputed per entry) cost about 11 s of CPU per pass on a 4,217-association board. The list
   // only grows (resolveCards, legacy adoption), so the index follows it by identity and length.
   private keyed?: { list: Association[]; size: number; map: Map<string, Association> };
-  private associated(key: string): Association | undefined {
+  private associated(key: string | undefined): Association | undefined {
+    if (!key) return undefined;
     const list = this.data.associations;
     if (this.keyed?.list !== list || this.keyed.size > list.length) this.keyed = { list, size: 0, map: new Map() };
     for (; this.keyed.size < list.length; this.keyed.size++) this.keyed.map.set(list[this.keyed.size].key, list[this.keyed.size]);
@@ -418,11 +440,12 @@ export class PublicationStore {
       const custodyFile = localJSON(localDirectory(options), this.config.custody);
       const custody = privateJSON(custodyFile) as Custody, custodyDigest = retainedDigest(custodyFile);
       this.checkCustody(custody);
-      if (prior && prior.version !== 2 && prior.version !== 3) throw new Error(`Unsupported reporter state version ${prior.version}; retained state was not overwritten`);
+      if (prior && ![2,3,4].includes(prior.version)) throw new Error(`Unsupported reporter state version ${prior.version}; retained state was not overwritten`);
+      if (prior?.version === 4) { this.version = 4; this.admitContinuity(); }
       if (cache && cache.version !== 1 && cache.version !== 2) throw new Error(`Unsupported source cache version ${cache.version}; retained state was not overwritten`);
       this.runtime = prior ? { ...prior } : {};
       delete this.runtime.publication; delete this.runtime.version;
-      if (prior?.version === 3) {
+      if (prior?.version === 3 || prior?.version === 4) {
         this.data = prior.publication;
         this.checkData();
         this.checkContinuity(custody, custodyDigest);
@@ -471,6 +494,9 @@ export class PublicationStore {
     const sessions = new Set<string>();
     for (const b of d.sessionBindings) {
       if (!nonempty(b.platformKey) || !nonempty(b.nativeSessionId) || !nonempty(b.evidence) || sessions.has(b.platformKey) || (b.associationKey && d.associations.find(a => a.key === b.associationKey)?.itemId !== b.itemId) || (b.itemId && !itemId.test(b.itemId))) throw new Error('Retained session binding is malformed or ambiguous');
+      if ((b.aliases !== undefined || b.origin !== undefined) && this.version !== 4) throw new Error('Version-3 reporter cannot contain native instance alias provenance');
+      checkAliasChain(b.aliases, b.origin);
+      if (b.audience !== undefined && !/^[0-9a-f]{64}$/.test(b.audience)) throw new Error('Retained publication audience identity is malformed');
       sessions.add(b.platformKey);
     }
     const obligations = new Set<string>();
@@ -524,6 +550,7 @@ export class PublicationStore {
     }
     if (markers.size) throw new Error('Legacy adoption leaves acknowledged note markers unmapped; unknown history is not fresh');
     for (const entry of adoption.sessions) {
+      if (entry.origin !== undefined) { this.admitContinuity(); this.version = 4; }
       if (!Object.hasOwn(prior.published ?? {}, entry.platformKey)) throw new Error('Legacy session adoption lacks retained checkpoint evidence');
       const suffix = entry.platformKey === entry.nativeSessionId ? 0 : entry.platformKey.startsWith(`${entry.nativeSessionId}~`) ? Number(entry.platformKey.slice(entry.nativeSessionId.length + 1)) : NaN;
       if (!Number.isSafeInteger(suffix) || suffix < 0 || suffix > (prior.continuations?.[entry.nativeSessionId] ?? 0)) throw new Error('Legacy session alias differs from its retained continuation identity');
@@ -548,7 +575,7 @@ export class PublicationStore {
     if (!store) throw new Error(`Unenrolled native backing store ${board}; publication remains pending`);
     return store.context;
   }
-  run<T>(work: () => Promise<T>): Promise<T> {
+  run<T>(work: () => Promise<T> | T): Promise<T> {
     if (this.closed || this.closing) return Promise.reject(new Error('Publication writer closing/closed'));
     const result = this.tail.then(() => { if (this.closed || this.closing) throw new Error('Publication writer closing/closed'); this.assertOwner(); return work(); }); this.tail = result.catch(() => {}); return result;
   }
@@ -567,20 +594,25 @@ export class PublicationStore {
   // whole, which removes the journal. Only version 3 state has a journal.
   private replay(saved: any): any {
     this.stateBytes = lstatSync(this.options.stateFile).size;
-    if (saved?.version !== 3 || !saved.publication || typeof saved.publication !== 'object') return saved;
+    if (![3,4].includes(saved?.version) || !saved.publication || typeof saved.publication !== 'object') return saved;
     const file = stateJournalFile(this.options.stateFile);
     if (!existsSync(file)) return saved;
     if (lstatSync(file).isSymbolicLink()) throw new Error('Reporter state journal must not be a symlink');
     const text = readFileSync(file, 'utf8'), end = text.lastIndexOf('\n') + 1, lines = text.slice(0, end).split('\n');
     let base: unknown;
     try { base = JSON.parse(lines[0]).base; } catch {}
-    if (base !== retainedDigest(this.options.stateFile)) { rmSync(file, { force: true }); return saved; }
+    if (base !== retainedDigest(this.options.stateFile)) {
+      if (saved.version === 4) throw new ContinuityPending('reporter v4 journal base conflicts; retained bytes were left intact');
+      rmSync(file, { force: true }); return saved;
+    }
     this.journalBytes = Buffer.byteLength(text); this.torn = end < text.length;
+    if (saved.version === 4 && this.torn) throw new ContinuityPending('reporter v4 journal has an unknown torn append; retained bytes were left intact');
     for (const list of ['associations', 'noteAliases', 'sessionBindings', 'pending', 'receipts']) if (!Array.isArray(saved.publication[list])) throw new Error('Malformed retained publication state');
     for (const line of lines.slice(1)) {
       if (!line) continue;
       let entry: StateChange;
       try { entry = JSON.parse(line); } catch { throw new Error('Reporter state journal malformed; retained state was not overwritten'); }
+      if (entry.kind === 'session-alias' && saved.version !== 4) throw new Error('Alias journal cannot extend a version-3 reporter');
       applyChange(saved, saved.publication, entry);
     }
     return saved;
@@ -589,7 +621,8 @@ export class PublicationStore {
   // at any step (even after its rename) leaves disk unknown: nothing is appended until a later whole write succeeds, so
   // no journal can name a base the file on disk does not hold.
   private compact(): void {
-    const bytes = JSON.stringify({ ...this.runtime, version: 3, publication: { ...this.data, pending: this.data.pending.map(retainedPending) } }) + '\n';
+    if (this.version === 4) this.admitContinuity();
+    const bytes = JSON.stringify({ ...this.runtime, version: this.version, publication: { ...this.data, pending: this.data.pending.map(retainedPending) } }) + '\n';
     try {
       savePublicationBytes(this.options.stateFile, bytes);
       this.base = publicationHash(bytes); this.stateBytes = Buffer.byteLength(bytes);
@@ -619,11 +652,95 @@ export class PublicationStore {
   private commit(change: StateChange): void {
     if (this.closed) throw new Error('Publication writer closed');
     this.assertOwner();
+    if (this.version === 4 || change.kind === 'session-alias') this.admitContinuity();
     applyChange(this.runtime, this.data, change);
     if (!this.durable || this.torn) { this.compact(); return; }
     this.append(change);
     // Folded when the journal outgrows the state; a fold that fails leaves the journal holding every change.
     if (this.journalBytes > Math.max(this.stateBytes, STATE_JOURNAL_FLOOR)) try { this.compact(); } catch {}
+  }
+  private admitContinuity(): void {
+    if (!this.options.continuityAdmission) throw new ContinuityPending('retained kit owner has not qualified the exact candidate and capable rollback for reporter v4');
+    this.options.continuityAdmission.assert();
+  }
+  get canRecordSessionOrigin(): boolean {
+    if (!this.options.continuityAdmission) return false;
+    this.admitContinuity(); return true;
+  }
+  sessionBinding(platformKey: string): SessionBinding | undefined {
+    const binding = this.data.sessionBindings.find(b => b.platformKey === platformKey);
+    return binding ? structuredClone(binding) : undefined;
+  }
+  sessionFamily(canonicalSession: string): SessionBinding | undefined {
+    const matches = this.data.sessionBindings.filter(binding => binding.origin?.canonicalSession === canonicalSession);
+    if (!matches.length) return undefined;
+    const native = matches[0].nativeSessionId;
+    if (matches.some(binding => binding.nativeSessionId !== native)) throw new ContinuityPending('canonical family has conflicting original publication identities');
+    const continuation = this.runtime.continuations?.[native] ?? 0, key = continuation ? `${native}~${continuation}` : native;
+    const current = matches.find(binding => binding.platformKey === key);
+    if (!current) throw new ContinuityPending('canonical family lacks its retained current continuation binding');
+    return structuredClone(current);
+  }
+  // Persist intent before replacing a reader. The frozen native ID/evidence and all publication state stay put.
+  prepareSessionAlias(platformKey: string, value: ContinuityReceipt, origin: OriginEvidence, audience: string): SessionAlias {
+    this.admitContinuity();
+    const receipt = continuityReceipt(value), old = this.data.sessionBindings.find(b => b.platformKey === platformKey);
+    if (!old?.associationKey || !old.itemId || !this.associated(old.associationKey)) throw new ContinuityPending('migration needs the retained positive card/item association');
+    if (!old.audience || old.audience !== audience) throw new ContinuityPending('publication audience differs or was never retained with the original source');
+    if (origin.bindingEvidence !== old.evidence || origin.canonicalSession !== receipt.canonical_session || !origin.native
+      || origin.instance.native_session_id !== old.nativeSessionId)
+      throw new ContinuityPending('first alias is not proved by the frozen adoption/attempt evidence and native origin readback');
+    const aliases = old.aliases ?? [], last = aliases.at(-1), receiptDigest = continuityDigest(receipt);
+    const sameKey = aliases.find(alias => alias.operation === receipt.operation_key);
+    if (sameKey) {
+      if (sameKey.receiptDigest !== receiptDigest) throw new ContinuityPending('operation returned changed receipt contents');
+      return structuredClone(sameKey);
+    }
+    if (last?.state === 'pending') throw new ContinuityPending('prior alias has an unresolved reconciliation');
+    if (last?.reader && last.reader.state !== 'retired') throw new ContinuityPending('prior alias reader retirement is unresolved');
+    // Raw-ID legacy bindings cannot acquire history retrospectively from the move's receipt. Their exact
+    // source-qualified origin must already be retained by publication or explicit reviewed adoption.
+    if (!old.origin) throw new ContinuityPending('legacy binding lacks retained exact old-tuple provenance; explicit source-qualified adoption is required');
+    const retainedOrigin = old.origin;
+    if (!sameContinuity(retainedOrigin, origin)) throw new ContinuityPending('frozen original source provenance changed');
+    const alias: SessionAlias = { version: 1, receipt, receiptDigest, predecessor: last?.receiptDigest ?? null,
+      operation: receipt.operation_key, generation: receipt.generation, instance: nativeInstance(receipt.instance), state: 'pending' };
+    const binding = { ...old, origin: retainedOrigin, aliases: [...aliases, alias] };
+    checkAliasChain(binding.aliases, binding.origin);
+    if (this.version === 3) {
+      // The format boundary is a whole durable write; no v4 journal entry can be mistaken for v3.
+      this.version = 4; this.durable = false;
+    }
+    this.commit({ kind: 'session-alias', binding });
+    return structuredClone(alias);
+  }
+  reconcileSessionAlias(platformKey: string, receiptDigest: string, reconciliation: AliasReconciliation | string): SessionAlias {
+    this.admitContinuity();
+    const old = this.data.sessionBindings.find(b => b.platformKey === platformKey), last = old?.aliases?.at(-1);
+    if (!old || !last || last.receiptDigest !== receiptDigest) throw new ContinuityPending('reconciliation does not name the current retained alias');
+    const checkpoint = this.runtime.published?.[platformKey];
+    if (typeof reconciliation !== 'string' && !sameContinuity(checkpoint, reconciliation.checkpoint)) throw new ContinuityPending('acknowledged checkpoint changed during alias reconciliation');
+    const alias: SessionAlias = typeof reconciliation === 'string' ? { ...last, state: 'pending', reconciliation: undefined, hold: reconciliation }
+      : { ...last, state: 'verified', reconciliation, hold: undefined };
+    const binding = { ...old, aliases: [...old.aliases!.slice(0,-1), alias] };
+    checkAliasChain(binding.aliases, binding.origin);
+    this.commit({ kind: 'session-alias', binding });
+    return structuredClone(alias);
+  }
+  retainAliasReader(platformKey: string,receiptDigest: string,connection: string,state: NonNullable<SessionAlias['reader']>['state']): void {
+    this.admitContinuity();
+    const old = this.data.sessionBindings.find(binding => binding.platformKey === platformKey), alias = old?.aliases?.at(-1);
+    if (!old || !alias || alias.receiptDigest !== receiptDigest || !nonempty(connection)) throw new ContinuityPending('reader does not name the current retained alias');
+    const ownerNonce = (this.options.owner ?? this.localLease)?.nonce;
+    if (!ownerNonce) throw new ContinuityPending('reader has no current publication lease identity');
+    if (alias.reader && alias.reader.state !== 'retired' && alias.reader.ownerNonce !== ownerNonce)
+      throw new ContinuityPending('prior publisher reader retirement is unknown; reconcile its exact retained connection before replacement');
+    if (state === 'replacing' && alias.reader && alias.reader.state !== 'retired') throw new ContinuityPending('prior alias reader has not retired');
+    if (['retired','unknown'].includes(state) && alias.reader?.connection !== connection) throw new ContinuityPending('retirement does not name the retained exact reader');
+    if (state === 'active' && alias.reader?.state !== 'replacing') throw new ContinuityPending('destination reader has no persisted replacement barrier');
+    const next = {...alias,reader:{ownerNonce,connection,state}};
+    const binding = {...old,aliases:[...old.aliases!.slice(0,-1),next]};
+    checkAliasChain(binding.aliases,binding.origin); this.commit({kind:'session-alias',binding});
   }
   resolveCards(rows: readonly SourceCard[]): void {
     const additions: Association[] = [], seen = new Set<string>();
@@ -738,6 +855,17 @@ export class PublicationStore {
     if (binding.itemId && (!itemId.test(binding.itemId) || redactSecrets(binding.itemId) !== binding.itemId)) throw new Error('Session item reference would be transformed');
     if (binding.associationKey && this.associated(binding.associationKey)?.itemId !== binding.itemId) throw new Error('Session item differs from its proven association');
     const old = this.data.sessionBindings.find(b => b.platformKey === binding.platformKey);
+    if (old?.origin && (old.nativeSessionId !== binding.nativeSessionId || old.evidence !== binding.evidence
+      || old.associationKey !== binding.associationKey || old.itemId !== binding.itemId || old.audience !== binding.audience))
+      throw new ContinuityPending('source-qualified original binding and audience are frozen');
+    if (binding.origin) {
+      this.admitContinuity(); checkOriginEvidence(binding.origin);
+      if (!binding.audience || !/^[0-9a-f]{64}$/.test(binding.audience) || binding.origin.instance.native_session_id !== binding.nativeSessionId || binding.origin.bindingEvidence !== binding.evidence
+        || (old?.origin && !sameContinuity(old.origin,binding.origin))) throw new ContinuityPending('native origin differs from its frozen binding');
+      if (old && !old.origin) throw new ContinuityPending('legacy binding needs explicit reviewed source-qualified adoption');
+      if (this.version === 3) { this.version = 4; this.durable = false; }
+    }
+    if (old?.aliases?.length && binding.audience !== old.audience) throw new ContinuityPending('migration cannot change the frozen publication audience');
     const continuation = (key: string): number | undefined => {
       if (key === binding.nativeSessionId) return 0;
       const prefix = `${binding.nativeSessionId}~`, suffix = key.startsWith(prefix) ? key.slice(prefix.length) : '';
