@@ -157,55 +157,81 @@ export function readInstall(path: string, home: string): InstallReceipt {
 // Generation retention, run by the keeper once an activation has finished. A home keeps the generation it serves, the
 // one that serving generation replaced (its rollback) and every generation a running process still uses: its command
 // line, working directory or an open file lies inside it, the keeper's own generation included. Every other generation
-// prepared before the serving one is removed, failed preparations included; one prepared after it waits for the next
-// activation. As ADR 0031 has retirement, it names exact directories and never stops a process, and while the running
-// processes cannot be read nothing is removed. Each generation gets one report line: kept, kept for now or retired.
+// whose receipt names this home and was written before the serving one's is removed, failed preparations with a receipt included; one
+// prepared after it waits for the next activation, and a directory with no such receipt is never touched. As ADR 0031
+// has retirement, it names exact directories and never stops a process. The running processes are read again before
+// each removal, and a reading that cannot show this process itself counts as unread: then nothing is removed. Each
+// generation gets one report line: kept, kept for now or retired.
+const GENERATION = /^[0-9a-f]{12}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export async function retireInstalls({ home, project, serving, rollback }: { home: string; project: string; serving: string; rollback: string | null }): Promise<string[]> {
-  const installs = realpathSync(resolve(realpathSync(home), '..', 'installs')), prefix = `${installs}${sep}`;
+  home = realpathSync(home);
+  const installs = realpathSync(resolve(home, '..', 'installs'));
   const current = dirname(realpathSync(serving)), replaced = rollback && existsSync(rollback) ? dirname(realpathSync(rollback)) : null;
   if (dirname(current) !== installs) throw new Error(`the serving receipt ${serving} is not a generation in ${installs}`);
-  const read = async (cmd: string[]): Promise<string> => {
+  const read = async (cmd: string[]): Promise<{ out: string; code: number | null }> => {
     const child = spawnWork(() => Bun.spawn({ cmd, stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' }));
     const bound = setTimeout(() => stopWorkChild(child, () => child.kill('SIGKILL'), { signal: 'SIGKILL' }), 60000);
+    try { const [out, code] = await Promise.all([new Response(child.stdout).text(), child.exited]); return { out, code }; }
+    finally { clearTimeout(bound); }
+  };
+  // Every running process's command line, working directory and open files, as one text. A listing that does not
+  // show this process was filtered or sandboxed and proves nothing about the others.
+  const running = async (): Promise<string> => {
+    const ps = await read(['ps', '-axww', '-o', 'pid=,command=']);
+    if (ps.code !== 0) throw new Error(`ps answered ${ps.code}`);
+    if (!ps.out.split('\n').some(line => line.trim().split(' ', 1)[0] === String(process.pid))) throw new Error('ps did not list this process');
+    const lsof = await read(['lsof', '-n', '-w', '-Fpn']);
+    const self = lsof.out.split('\n').includes(`p${process.pid}`);
+    // lsof answers 1 when some process could not be read; that listing counts only when it still shows this process.
+    if (!(lsof.code === 0 || (lsof.code === 1 && self))) throw new Error(`lsof answered ${lsof.code}`);
+    if (!self) throw new Error('lsof did not list this process');
+    return `${ps.out}\n${lsof.out}`;
+  };
+  const user = (text: string, name: string): string | null => {
+    const at = text.indexOf(`${installs}${sep}${name}`);
+    if (at < 0) return null;
+    const line = text.slice(text.lastIndexOf('\n', at) + 1, at);
+    if (!line.startsWith('n')) return line.trim().split(' ', 1)[0] || 'unknown';
+    const field = text.lastIndexOf('\np', at);  // an lsof file line belongs to the process field above it
+    return field < 0 ? 'unknown' : text.slice(field + 2, text.indexOf('\n', field + 1));
+  };
+  let seen: string;
+  try { seen = await running(); }
+  catch (error) { return [`kept for now: every generation in ${installs} (the running processes could not be read: ${(error as Error).message}; the next activation retries)`]; }
+  const written = (directory: string): number | null => {
     try {
-      const [out, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
-      // lsof answers 1 when some process could not be read and still lists every other one.
-      if (code !== 0 && !(cmd[0] === 'lsof' && code === 1 && out)) throw new Error(`${cmd.join(' ')} answered ${code ?? child.signalCode}`);
-      return out;
-    } finally { clearTimeout(bound); }
+      const receipt = JSON.parse(readFileSync(join(directory, 'install.json'), 'utf8'));
+      return receipt?.kind === 'open-autonomy-install' && receipt.home === home ? statSync(join(directory, 'install.json')).mtimeMs : null;
+    } catch { return null; }
   };
-  const held = new Map<string, string>();
-  const note = (pid: string, text: string) => {
-    for (let at = text.indexOf(prefix); at >= 0; at = text.indexOf(prefix, at + 1)) {
-      const name = text.slice(at + prefix.length).split(/[/\s'"]/, 1)[0];
-      if (name && !held.has(name)) held.set(name, pid);
-    }
-  };
-  try {
-    for (const line of (await read(['ps', '-axww', '-o', 'pid=,command='])).split('\n')) note(line.trim().split(' ', 1)[0], line);
-    let pid = '';
-    for (const line of (await read(['lsof', '-n', '-w', '-Fpn'])).split('\n')) line.startsWith('p') ? pid = line.slice(1) : note(pid, line);
-  } catch (error) {
-    return [`kept for now: every generation in ${installs} (the running processes could not be read: ${(error as Error).message}; the next activation retries)`];
-  }
-  const newest = statSync(current).mtimeMs, report: string[] = [];
+  const newest = written(current);
+  if (newest === null) throw new Error(`the serving generation ${current} has no receipt for ${home}`);
+  const report: string[] = [];
   for (const name of readdirSync(installs).sort()) {
     const directory = join(installs, name);
     if (directory === current) { report.push(`kept: ${directory} (serving)`); continue; }
     if (directory === replaced) { report.push(`kept: ${directory} (the generation the serving one replaced; its rollback)`); continue; }
-    if (held.has(name)) { report.push(`kept: ${directory} (process ${held.get(name)} uses it)`); continue; }
-    const entry = lstatSync(directory, { throwIfNoEntry: false });
-    if (!entry?.isDirectory()) continue;
-    if (entry.mtimeMs >= newest) { report.push(`kept for now: ${directory} (prepared after the serving generation; the next activation decides)`); continue; }
+    if (!GENERATION.test(name) || !lstatSync(directory, { throwIfNoEntry: false })?.isDirectory()) continue;
+    const at = written(directory);
+    if (at === null) { report.push(`kept: ${directory} (no install receipt names this home)`); continue; }
+    if (at >= newest) { report.push(`kept for now: ${directory} (prepared after the serving generation; the next activation decides)`); continue; }
+    let pid = user(seen, name);
+    if (pid === null) {
+      try { seen = await running(); pid = user(seen, name); }
+      catch (error) { report.push(`kept for now: ${directory} and every later generation (the running processes could not be read again: ${(error as Error).message}; the next activation retries)`); break; }
+    }
+    if (pid !== null) { report.push(`kept: ${directory} (process ${pid} uses it)`); continue; }
     try {
-      // The snapshot is a detached worktree of the project; its registration goes with it. A snapshot Git no longer
-      // registers there (an earlier project, a pruned entry) has none to remove, so that refusal changes nothing.
+      // The snapshot is a detached worktree of the project. A registration this cannot remove (an earlier project, an
+      // entry already pruned) is pruned once the loop ends.
       const snapshot = join(directory, 'project');
       if (existsSync(join(snapshot, '.git'))) await run(['git', 'worktree', 'remove', '--force', '--force', snapshot], project).catch(() => {});
       await rm(directory, { recursive: true, force: true });
       report.push(`retired: ${directory}`);
     } catch (error) { report.push(`kept for now: ${directory} (it could not be removed: ${(error as Error).message}; the next activation retries)`); }
   }
+  try { await run(['git', 'worktree', 'prune'], project); }
+  catch (error) { report.push(`kept for now: worktree registrations of removed generations in ${project} (${(error as Error).message}; the next activation retries)`); }
   return report;
 }
 
