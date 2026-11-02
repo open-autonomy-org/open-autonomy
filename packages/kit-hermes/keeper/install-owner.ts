@@ -10,9 +10,11 @@ import { constants } from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { prepareInstall, readInstall, type InstallReceipt } from '../base/.open-autonomy/prepare-install.ts';
 import { machinePublishedBinding, runtimeInstallIdentity } from '../base/.open-autonomy/install-runtime.ts';
+import { readerGeneration, sameScanResourceContract, type ReaderInventory, type ReaderRetirement, type ReaderRetirementUnavailable } from '../base/.open-autonomy/reader-retirement.ts';
 
 type Selection = { receipt: string; source: string | null; release?: string | null; native: string | null };
-type Stack = { process: ReturnType<typeof Bun.spawn>; selected: Selection; ready: string };
+type Stack = { process: ReturnType<typeof Bun.spawn>; selected: Selection; ready: string; generation: string;
+  entry: string; publisherEntry: string; retirementCapable: boolean; retirement?: ReaderRetirement | ReaderRetirementUnavailable };
 const json = (path: string): any => { try { return JSON.parse(readFileSync(path, 'utf8')); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; } };
 // The control protocol's native field is a legacy selected-program pathname.
 const sourceProgram = (path: string): string => sourceReceiptProgram(path).program;
@@ -42,10 +44,11 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
   let active: Stack | null = null, previous: Selection | null = null, stopping = false, failure: string | null = null;
   let pending: { id: string; selected: Selection; predecessor: Selection; phase: string } | null = null;
   let busy: Promise<unknown> | null = null, starting: Stack | null = null, restartSelection: Selection | null = null;
+  let readerRetirement: ReaderRetirement | ReaderRetirementUnavailable | null = null;
   const changes = new Set<() => void>();
   const wake = () => { for (const done of changes) done(); changes.clear(); };
   const write = () => { const temporary = `${recordPath}.${process.pid}.tmp`; writeFileSync(temporary, JSON.stringify({ version: 1, owner: process.pid,
-    active: active?.selected ?? null, previous, transaction: pending, failure }) + '\n', { mode: 0o600 }); const fd = openSync(temporary, 'r+'); try { fsyncSync(fd); } finally { closeSync(fd); }
+    active: active?.selected ?? null, previous, transaction: pending, failure, reader_retirement: readerRetirement }) + '\n', { mode: 0o600 }); const fd = openSync(temporary, 'r+'); try { fsyncSync(fd); } finally { closeSync(fd); }
     renameSync(temporary, recordPath); if (process.platform !== 'win32') { const dir = openSync(home, 'r'); try { fsyncSync(dir); } finally { closeSync(dir); } } };
   const envFor = (selected: Selection) => { const env = { ...process.env } as Record<string, string>; delete env.SUPERCODE_SOURCE_CANDIDATE; delete env.SUPERCODE_RELEASE_RECEIPT; delete env.SUPERCODE_RELEASE_VERSION;
     if (selected.release) env.SUPERCODE_RELEASE_RECEIPT = selected.release;
@@ -69,13 +72,15 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     return receipt;
   };
   const start = async (selected: Selection, progress: (phase: string) => void = () => {}): Promise<Stack> => {
-    const receipt = validate(selected), ready = resolve(home, `.kit-ready-${randomUUID()}.json`);
+    const receipt = validate(selected), generation = randomUUID(), ready = resolve(home, `.kit-ready-${generation}.json`);
     const args = [...argv];
     for (const flag of ['--project', '--home', '--prepared-install']) { const at = args.indexOf(flag); if (at >= 0) args.splice(at, 2); }
     const child = spawnWork(() => Bun.spawn({ cmd: [process.execPath, receipt.entry, ...args, '--project', receipt.project, '--home', home, '--stack-child'],
       env: { ...envFor(selected), OPEN_AUTONOMY_INSTALL_RECEIPT: receipt.receipt, OPEN_AUTONOMY_PROJECT_SOURCE: receipt.sourceProject,
-        OPEN_AUTONOMY_KIT_READY_FILE: ready }, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' }), 'bun', { stoppedExitCodes: [75] });
-    const stack = { process: child, selected, ready }; starting = stack; restartSelection = selected;
+        OPEN_AUTONOMY_KIT_READY_FILE: ready, OPEN_AUTONOMY_STACK_GENERATION: generation,
+        OPEN_AUTONOMY_INSTALL_OWNER_ENTRY: realpathSync(Bun.main) }, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' }), 'bun', { stoppedExitCodes: [75] });
+    const stack: Stack = { process: child, selected, ready, generation, entry: realpathSync(receipt.entry),
+      publisherEntry: realpathSync(resolve(dirname(receipt.entry), 'publisher.ts')), retirementCapable: false }; starting = stack; restartSelection = selected;
     child.exited.then(code => { if (active !== stack || stopping) return;
       active = null; failure = `kit stack ended (${code})`; write(); wake(); });
     try {
@@ -83,7 +88,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
       while (!stopping && Date.now() < until) {
         const proof = json(ready);
         if (proof?.pid === child.pid && proof.receipt === receipt.receipt) {
-          if (proof.ready === true) return stack;
+          if (proof.ready === true) { stack.retirementCapable = proof.scan_resource_owner?.complete === true && boundReaders(proof.scan_resource_owner, stack, false); return stack; }
           if (Number.isSafeInteger(proof.deadline_ms) && proof.deadline_ms > observed && ['starting', 'kit-command'].includes(proof.progress)) {
             // A running setup/clone command has its own existing work bound. The readiness probe must not terminate
             // that work after eight seconds; an idle startup still has only eight seconds to answer its next phase.
@@ -101,15 +106,67 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     } finally { starting = null; }
   };
 
+  const boundReaders = (proof: any, stack: Stack, retired: boolean): boolean => proof?.version === 1
+    && sameScanResourceContract(proof.contract) && proof.install === stack.selected.receipt
+    && proof.source === stack.selected.source && proof.release === (stack.selected.release ?? null)
+    && proof.owner?.pid === process.pid && proof.owner.entry === realpathSync(Bun.main)
+    && proof.stack?.generation === stack.generation && proof.stack.pid === stack.process.pid
+    && proof.stack.entry === stack.entry
+    && Array.isArray(proof.readers) && proof.readers.length <= 4096
+    && proof.readers.every((reader: any) => readerGeneration(reader?.generation) && Number.isSafeInteger(reader.pid)
+      && reader.pid > 0 && reader.entry === stack.publisherEntry
+      && reader.retired === retired)
+    && new Set(proof.readers.map((reader: any) => reader.generation)).size === proof.readers.length;
+  const currentReaders = (stack: Stack | null): ReaderInventory | null => {
+    if (!stack || stack.process.exitCode !== null || stack.process.signalCode !== null) return null;
+    try {
+      const ready = json(stack.ready), proof = ready?.scan_resource_owner;
+      return ready?.pid === stack.process.pid && ready.receipt === stack.selected.receipt && ready.ready === true
+        && proof?.complete === true && boundReaders(proof, stack, false) ? proof : null;
+    } catch { return null; } // unavailable inventory is explicit; it never supplies an empty/complete census
+  };
   const stopStack = async (stack: Stack | null) => {
     if (!stack) return;
-    stopWorkChild(stack.process, () => stack.process.kill(constants.signals.SIGTERM), { signal: constants.signals.SIGTERM });
+    const transaction = pending?.id ?? null;
+    if (stack.retirement) {
+      if (stack.retirement.transaction !== transaction) throw new Error('Retired stack belongs to another handover transaction');
+      return;
+    }
+    if (stack.process.exitCode === null && stack.process.signalCode === null)
+      stopWorkChild(stack.process, () => stack.process.kill(constants.signals.SIGTERM), { signal: constants.signals.SIGTERM });
     // The inner stack gives every exact child its own stop and bounded cleanup. It never owns the board or proxy.
-    const bound = setTimeout(() => stopWorkChild(stack.process, () => stack.process.kill('SIGKILL'), { signal: 'SIGKILL' }), 18000);
-    try { await stack.process.exited; } finally { clearTimeout(bound); rmSync(stack.ready, { force: true }); }
+    let bound: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([stack.process.exited, new Promise<never>((_done, reject) => {
+        bound = setTimeout(() => {
+          let cause = '';
+          try { stopWorkChild(stack.process, () => stack.process.kill('SIGKILL'), { signal: 'SIGKILL' }); }
+          catch (error) { cause = `: ${(error as Error).message}`; }
+          reject(new Error(`Kit stack ${stack.process.pid} retirement exceeded its bound; reader ownership is uncertain${cause}`));
+        }, 18000);
+      })]);
+    } finally { clearTimeout(bound); }
+    const ready = json(stack.ready), proof = ready?.reader_retirement;
+    if (stack.process.signalCode !== null || ready?.pid !== stack.process.pid || ready.receipt !== stack.selected.receipt
+      || proof?.retired !== true || proof.transaction !== null || !boundReaders(proof, stack, true)) {
+      readerRetirement = { version: 1, transaction, install: stack.selected.receipt, source: stack.selected.source,
+        release: stack.selected.release ?? null, stack: { generation: stack.generation, pid: stack.process.pid, entry: stack.entry },
+        retired: false, reason: 'Legacy/uncertain stack has no complete joined reader retirement receipt' };
+      write(); // preserve uncertainty before any legacy readiness cleanup; never qualifies first grants
+      if (stack.retirementCapable) throw new Error(`Kit stack ${stack.process.pid} has no complete generation-bound reader retirement receipt; readiness retained`);
+      stack.retirement = readerRetirement;
+      rmSync(stack.ready, { force: true });
+      return;
+    }
+    // Only the owner binds the actual stopped predecessor to its held transaction. No caller-supplied flag is accepted.
+    const retirement: ReaderRetirement = { ...proof, transaction };
+    readerRetirement = retirement; stack.retirement = retirement;
+    write(); // durable aggregate precedes readiness deletion and successor startup
+    rmSync(stack.ready, { force: true });
   };
   const status = () => ({ version: 1, protocol: 1, runtime: process.execPath, owner: process.pid, pid: active?.process.pid, state: active && active.process.exitCode === null && active.process.signalCode === null ? 'serving' : 'transitioning',
-    selected: active?.selected, previous, transaction: pending?.id ?? null, phase: pending?.phase ?? null, failure });
+    selected: active?.selected, previous, transaction: pending?.id ?? null, phase: pending?.phase ?? null, failure,
+    scan_resource_owner: currentReaders(active), reader_retirement: readerRetirement });
   const rollback = async (progress: (phase: string) => void = () => {}) => {
     if (!pending) return status();
     const held = pending;
@@ -189,6 +246,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
   try {
     await new Promise<void>((done, reject) => { server.once('error', reject); server.listen(socketPath, done); }); chmodSync(socketPath, 0o600);
     const saved = json(recordPath);
+    readerRetirement = saved?.reader_retirement ?? null;
     let initial: Selection | null;
     if (saved?.transaction || saved?.active) {
       previous = saved.previous ?? null;

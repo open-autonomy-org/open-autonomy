@@ -50,8 +50,9 @@ import { serveInstallOwner } from './install-owner.ts';
 import { acquireBoard, boardDeclaration, boardOwnerAnswers, retainedBoard } from './retained-board.ts';
 import { readInstall } from '../base/.open-autonomy/prepare-install.ts';
 import { ensureCodexService } from './codex-service-client.ts';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { randomBytes } from 'node:crypto';
+import { SCAN_RESOURCE_CONTRACT, sameScanResourceContract, readerGeneration, type ReaderInventory, type ReaderRetirement } from '../base/.open-autonomy/reader-retirement.ts';
+import { closeSync, cpSync, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { constants, hostname, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
 import { basename, dirname, relative, resolve } from 'node:path';
@@ -179,26 +180,52 @@ const helpers = new Set<ReturnType<typeof Bun.spawn>>();
 // no command — and only waits for what it already started to exit.
 let ending = false;
 let nativeGatewayReady = false, stackConfigured = false;
-const publishKit = (value: Record<string, unknown>) => {
+const stackGeneration = process.env.OPEN_AUTONOMY_STACK_GENERATION ?? randomUUID();
+if (!readerGeneration(stackGeneration)) throw new Error('Stack needs its exact owner generation');
+const readerGenerations = new Map<string, { pid: number; entry: string; acknowledged: boolean; exited: boolean }>();
+const readerInventory = (): ReaderInventory | undefined => prepared ? { version: 1, contract: SCAN_RESOURCE_CONTRACT,
+  install: prepared.receipt, source: prepared.source, release: prepared.release,
+  owner: { pid: process.ppid, entry: process.env.OPEN_AUTONOMY_INSTALL_OWNER_ENTRY ?? '' },
+  stack: { generation: stackGeneration, pid: process.pid, entry: realpathSync(Bun.main) },
+  readers: [...readerGenerations].filter(([, reader]) => !reader.acknowledged || !reader.exited)
+    .map(([generation, reader]) => ({ generation, pid: reader.pid, entry: reader.entry, retired: false })), complete: true } : undefined;
+const publishKit = (value: Record<string, unknown>, retiring = false) => {
   const file = process.env.OPEN_AUTONOMY_KIT_READY_FILE;
-  if (!ending && prepared && file) {
+  if ((!ending || retiring) && prepared && file) {
     const temporary = `${file}.${process.pid}.tmp`;
     writeFileSync(temporary, JSON.stringify({ ...value, pid: process.pid, receipt: prepared.receipt }) + '\n', { mode: 0o600 });
+    const fd = openSync(temporary, 'r+'); try { fsyncSync(fd); } finally { closeSync(fd); }
     renameSync(temporary, file);
+    const dir = openSync(dirname(file), 'r'); try { fsyncSync(dir); } finally { closeSync(dir); }
   }
 };
 let kitServed = false;
-const publishReady = () => { if (stackConfigured && nativeGatewayReady) { kitServed = true; publishKit({ ready: true }); } };
+const publishReady = () => { if (stackConfigured && nativeGatewayReady) { kitServed = true; publishKit({ ready: true, scan_resource_owner: readerInventory() }); } };
 publishKit({ progress: 'starting', deadline_ms: Date.now() + 8000 });
 let restartAsked = false;
 process.on('exit', () => {
-  for (const proc of [...children.map((c) => c.proc), ...helpers]) { try { stopWorkChild(proc, () => proc.kill(), { signal: 'SIGTERM' }); } catch { /* already gone */ } }
+  for (const proc of [...children.map((c) => c.proc), ...helpers]) if (proc.exitCode === null && proc.signalCode === null) {
+    try { stopWorkChild(proc, () => proc.kill(), { signal: 'SIGTERM' }); } catch { /* already gone */ }
+  }
 });
 function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<string, string>; asAgent?: boolean; stdout?: 'pipe'; allowRestart?: () => boolean; stoppedExitCodes?: readonly number[] }) {
   if (ending) throw new Error(`start: ${name} not started: the stack is stopping`);
-  const proc = spawnWork(() => Bun.spawn({ cmd: opts.asAgent ? drop(cmd) : cmd, cwd: opts.cwd ?? project, env: { ...(opts.env ?? inherited()), OPEN_AUTONOMY_LEDGER_SCOPE: home }, stdout: opts.stdout ?? 'inherit', stderr: 'inherit', stdin: 'ignore' }), 'bun', { stoppedExitCodes: opts.stoppedExitCodes });
+  const generation = name.startsWith('reporter') ? randomUUID() : undefined;
+  const proc = spawnWork(() => Bun.spawn({ cmd: opts.asAgent ? drop(cmd) : cmd, cwd: opts.cwd ?? project,
+    env: { ...(opts.env ?? inherited()), OPEN_AUTONOMY_LEDGER_SCOPE: home,
+      ...(generation ? { OPEN_AUTONOMY_READER_GENERATION: generation, OPEN_AUTONOMY_STACK_GENERATION: stackGeneration } : {}) },
+    stdout: opts.stdout ?? 'inherit', stderr: 'inherit', stdin: 'ignore',
+    ipc: generation ? (message: unknown) => {
+      const proof = message as Record<string, unknown>, held = readerGenerations.get(generation);
+      if (held && proof?.type === 'reporter-retired' && proof.version === 1 && sameScanResourceContract(proof.contract)
+        && proof.generation === generation && proof.stack === stackGeneration && proof.pid === held.pid && proof.retired === true) {
+        held.acknowledged = true; publishReady();
+      }
+    } : undefined }), 'bun', { stoppedExitCodes: opts.stoppedExitCodes });
+  if (generation) { readerGenerations.set(generation, { pid: proc.pid, entry: realpathSync(cmd[1]), acknowledged: false, exited: false }); publishReady(); }
   children.push({ name, proc });
   proc.exited.then(async (code) => {
+    if (generation) { readerGenerations.get(generation)!.exited = true; publishReady(); }
     if (ending) return;
     if (name === 'board' && code === 0) {
       children.splice(children.findIndex((c) => c.proc === proc), 1);
@@ -216,12 +243,9 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
       }, 10_000);
       return;
     }
-    ending = true;
     say(`${name} ended (${code}); stopping the rest`);
-    for (const c of children) if (c.proc !== proc) stopWorkChild(c.proc, () => c.proc.kill(), { signal: 'SIGTERM' });
-    await Promise.all(children.map((c) => c.proc.exited));
     // the runtime drained on request (Hermes exits 75; the orchestrator, told to stop, exits 0): restart onto main
-    await closeWorkLedger(); process.exit(name === 'gateway' && (code === 75 || (restartAsked && code === 0)) ? 75 : 1);
+    await stopServices(name === 'gateway' && (code === 75 || (restartAsked && code === 0)) ? 75 : 1);
   });
   return proc;
 }
@@ -229,17 +253,39 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
 // winding down (a tick in flight) makes that successor find it "already running" and die at once.
 // Every child is told SIGTERM whichever signal arrived: it is the stop every service has always been sent here (the
 // orchestrator records each conversation to resume on it), while what SIGHUP means is each program's own.
-for (const sig of stopSignals) process.on(sig, async () => {
-  if (ending) return;
+let stoppingServices: Promise<void> | undefined;
+function stopServices(code: number): Promise<void> {
+  if (stoppingServices) return stoppingServices;
   ending = true;
-  say(`${sig}: stopping ${children.length} service(s)${helpers.size ? ` and ${helpers.size} command(s) in flight` : ''}; nothing new starts`);
-  const live = [...children.map((c) => c.proc), ...helpers];
-  for (const proc of live) stopWorkChild(proc, () => proc.kill(constants.signals.SIGTERM), { signal: constants.signals.SIGTERM });
-  const bound = new Promise<void>((done) => setTimeout(done, 15_000));
-  await Promise.race([Promise.all(live.map((proc) => proc.exited)), bound]);
-  for (const proc of live) if (proc.exitCode === null && proc.signalCode === null) stopWorkChild(proc, () => proc.kill('SIGKILL'), { signal: 'SIGKILL' });
-  await closeWorkLedger(); process.exit(0);
-});
+  stoppingServices = (async () => {
+    say(`stopping ${children.length} service(s)${helpers.size ? ` and ${helpers.size} command(s) in flight` : ''}; nothing new starts`);
+    const live = [...children.map((c) => c.proc), ...helpers];
+    const failures: unknown[] = [];
+    for (const proc of live) if (proc.exitCode === null && proc.signalCode === null) try {
+      stopWorkChild(proc, () => proc.kill(constants.signals.SIGTERM), { signal: constants.signals.SIGTERM });
+    } catch (error) { failures.push(error); }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([Promise.all(live.map((proc) => proc.exited)), new Promise<void>(done => { timer = setTimeout(done, 15_000); })]);
+    clearTimeout(timer);
+    for (const proc of live) if (proc.exitCode === null && proc.signalCode === null) {
+      failures.push(new Error(`Owned service ${proc.pid} did not retire before the stop deadline`));
+      try { stopWorkChild(proc, () => proc.kill('SIGKILL'), { signal: 'SIGKILL' }); } catch (error) { failures.push(error); }
+    }
+    for (const [generation, reader] of readerGenerations) if (!reader.acknowledged || !reader.exited)
+      failures.push(new Error(`Publisher ${reader.pid} generation ${generation} has no joined reader retirement acknowledgement and exit`));
+    if (!failures.length && prepared) {
+      const inventory = readerInventory()!;
+      const { complete: _complete, ...identity } = inventory;
+      const retirement: ReaderRetirement = { ...identity, transaction: null,
+        readers: [...readerGenerations].map(([generation, reader]) => ({ generation, pid: reader.pid, entry: reader.entry, retired: true })), retired: true };
+      publishKit({ reader_retirement: retirement }, true);
+    }
+    if (failures.length) say(`reader retirement refused: ${failures.map(error => (error as Error).message).join('; ')}`);
+    await closeWorkLedger(); process.exit(failures.length ? 1 : code);
+  })();
+  return stoppingServices;
+}
+for (const sig of stopSignals) process.on(sig, () => { if (!ending) void stopServices(0); });
 // The startup's await points: once a signal has arrived, the start goes no further (the handler above exits the process
 // when what it already started has exited). Startup code between two awaits runs whole, so these are the only places a
 // signal can have arrived since the last check.
