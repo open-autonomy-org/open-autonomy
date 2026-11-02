@@ -8,7 +8,7 @@ import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readF
 import { dirname, resolve } from 'node:path';
 import { constants } from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
-import { prepareInstall, readInstall, type InstallReceipt } from '../base/.open-autonomy/prepare-install.ts';
+import { prepareInstall, readInstall, retireInstalls, type InstallReceipt } from '../base/.open-autonomy/prepare-install.ts';
 import { machinePublishedBinding, runtimeInstallIdentity } from '../base/.open-autonomy/install-runtime.ts';
 
 type Selection = { receipt: string; source: string | null; release?: string | null; native: string | null };
@@ -110,6 +110,14 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
   };
   const status = () => ({ version: 1, protocol: 1, runtime: process.execPath, owner: process.pid, pid: active?.process.pid, state: active && active.process.exitCode === null && active.process.signalCode === null ? 'serving' : 'transitioning',
     selected: active?.selected, previous, transaction: pending?.id ?? null, phase: pending?.phase ?? null, failure });
+  // A finished activation retires the generations no one needs (retireInstalls). It runs after the finish answer, so it
+  // never holds a transition; a later finish's retirement queues behind it and retries whatever it kept for now.
+  let retiring: Promise<void> = Promise.resolve();
+  const retire = (serving: string, replaced: string | null) => {
+    retiring = retiring.then(() => retireInstalls({ home, project, serving, rollback: replaced })).then(
+      lines => { for (const line of lines) console.log(`keeper: ${line}`); },
+      error => console.error(`keeper: generation retention stopped: ${(error as Error).message}`));
+  };
   const rollback = async (progress: (phase: string) => void = () => {}) => {
     if (!pending) return status();
     const held = pending;
@@ -158,7 +166,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     if (action === 'finish') {
       if (pending.phase !== 'activated') throw new Error('kit successor was never activated');
       if (!active || active.process.exitCode !== null || active.process.signalCode !== null) { progress('starting-successor'); active = await start(pending.selected, progress); }
-      pending = null; failure = null; write(); return status();
+      pending = null; failure = null; write(); retire(active.selected.receipt, previous?.receipt ?? null); return status();
     }
     throw new Error('unknown kit handover action');
   };

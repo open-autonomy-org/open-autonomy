@@ -1,7 +1,9 @@
 // Prepare one immutable kit/project input before asking a serving keeper to change. No home, port or service is
 // touched. Dependency installation finishes in the new detached worktree; a refusal preserves the serving inputs.
-import { spawnSyncWork, spawnWork } from './work-ledger.ts';
-import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+// After an activation finishes, the keeper retires the generations no one needs any more (retireInstalls).
+import { spawnSyncWork, spawnWork, stopWorkChild } from './work-ledger.ts';
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { dirname, join, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -109,7 +111,8 @@ export async function prepareInstall({ project, home, revision, source = null, r
   if (!/^[0-9a-f]{40,64}$/.test(commit)) throw new Error('install preparation has no exact project commit');
   const directory = resolve(home, '..', 'installs', `${commit.slice(0, 12)}-${randomUUID()}`), snapshot = resolve(directory, 'project');
   mkdirSync(directory, { recursive: true, mode: 0o700 });
-  // Keep failed preparation inputs for diagnosis. No existing generation is deleted, rewritten or checked out.
+  // A failed preparation stays for diagnosis until the next activation finishes. Preparation itself deletes, rewrites
+  // or checks out no existing generation.
   await run(['git', 'worktree', 'add', '--detach', snapshot, commit], project);
   const host = resolve(snapshot, '.open-autonomy');
   if (archive) {
@@ -149,6 +152,61 @@ export function readInstall(path: string, home: string): InstallReceipt {
   const status = spawnSyncWork(() => Bun.spawnSync(['git', '-C', receipt.project, 'status', '--porcelain', '--untracked-files=no']));
   if (status.exitCode !== 0 || status.stdout.toString().trim()) throw new Error('prepared kit tracked inputs changed');
   return receipt;
+}
+
+// Generation retention, run by the keeper once an activation has finished. A home keeps the generation it serves, the
+// one that serving generation replaced (its rollback) and every generation a running process still uses: its command
+// line, working directory or an open file lies inside it, the keeper's own generation included. Every other generation
+// prepared before the serving one is removed, failed preparations included; one prepared after it waits for the next
+// activation. As ADR 0031 has retirement, it names exact directories and never stops a process, and while the running
+// processes cannot be read nothing is removed. Each generation gets one report line: kept, kept for now or retired.
+export async function retireInstalls({ home, project, serving, rollback }: { home: string; project: string; serving: string; rollback: string | null }): Promise<string[]> {
+  const installs = realpathSync(resolve(realpathSync(home), '..', 'installs')), prefix = `${installs}${sep}`;
+  const current = dirname(realpathSync(serving)), replaced = rollback && existsSync(rollback) ? dirname(realpathSync(rollback)) : null;
+  if (dirname(current) !== installs) throw new Error(`the serving receipt ${serving} is not a generation in ${installs}`);
+  const read = async (cmd: string[]): Promise<string> => {
+    const child = spawnWork(() => Bun.spawn({ cmd, stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' }));
+    const bound = setTimeout(() => stopWorkChild(child, () => child.kill('SIGKILL'), { signal: 'SIGKILL' }), 60000);
+    try {
+      const [out, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+      // lsof answers 1 when some process could not be read and still lists every other one.
+      if (code !== 0 && !(cmd[0] === 'lsof' && code === 1 && out)) throw new Error(`${cmd.join(' ')} answered ${code ?? child.signalCode}`);
+      return out;
+    } finally { clearTimeout(bound); }
+  };
+  const held = new Map<string, string>();
+  const note = (pid: string, text: string) => {
+    for (let at = text.indexOf(prefix); at >= 0; at = text.indexOf(prefix, at + 1)) {
+      const name = text.slice(at + prefix.length).split(/[/\s'"]/, 1)[0];
+      if (name && !held.has(name)) held.set(name, pid);
+    }
+  };
+  try {
+    for (const line of (await read(['ps', '-axww', '-o', 'pid=,command='])).split('\n')) note(line.trim().split(' ', 1)[0], line);
+    let pid = '';
+    for (const line of (await read(['lsof', '-n', '-w', '-Fpn'])).split('\n')) line.startsWith('p') ? pid = line.slice(1) : note(pid, line);
+  } catch (error) {
+    return [`kept for now: every generation in ${installs} (the running processes could not be read: ${(error as Error).message}; the next activation retries)`];
+  }
+  const newest = statSync(current).mtimeMs, report: string[] = [];
+  for (const name of readdirSync(installs).sort()) {
+    const directory = join(installs, name);
+    if (directory === current) { report.push(`kept: ${directory} (serving)`); continue; }
+    if (directory === replaced) { report.push(`kept: ${directory} (the generation the serving one replaced; its rollback)`); continue; }
+    if (held.has(name)) { report.push(`kept: ${directory} (process ${held.get(name)} uses it)`); continue; }
+    const entry = lstatSync(directory, { throwIfNoEntry: false });
+    if (!entry?.isDirectory()) continue;
+    if (entry.mtimeMs >= newest) { report.push(`kept for now: ${directory} (prepared after the serving generation; the next activation decides)`); continue; }
+    try {
+      // The snapshot is a detached worktree of the project; its registration goes with it. A snapshot Git no longer
+      // registers there (an earlier project, a pruned entry) has none to remove, so that refusal changes nothing.
+      const snapshot = join(directory, 'project');
+      if (existsSync(join(snapshot, '.git'))) await run(['git', 'worktree', 'remove', '--force', '--force', snapshot], project).catch(() => {});
+      await rm(directory, { recursive: true, force: true });
+      report.push(`retired: ${directory}`);
+    } catch (error) { report.push(`kept for now: ${directory} (it could not be removed: ${(error as Error).message}; the next activation retries)`); }
+  }
+  return report;
 }
 
 if (Bun.main === import.meta.path) {
