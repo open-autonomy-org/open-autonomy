@@ -100,3 +100,54 @@ pass's native reads were refused and board deliveries stopped committing. A tran
 native declarations; a session that appeared or left, or a change to the profiles' declarations, also marks documents,
 since documents read the home's profiles, jobs and skills and committed main, never a transcript.
 This changes no audience, spend authority, credentials or native lifecycle evidence.
+
+## VO-3758: retained reader affinity and retirement (proposed)
+
+Supercode's [ADR 0256](https://github.com/volter-ai/supercode/blob/main/docs/adr/0256-publisher-affinity-and-scan-store-admission.md)
+places disposable native scan resources under one durable machine authority. The kit keeps
+four readers and assigns each exact native locator to one reader generation across complete
+reconciliations. An OA continuation key does not change that assignment. A busy assigned
+source stays pending while other lanes drain; each native session still has one active pass
+and one coalesced later pass. The board writer remains independent, and native waits retain
+their existing unbounded same-lane semantics.
+
+Descriptor removal, locator replacement and reader loss retire the affected whole reader
+generation through the public SDK close door. Assignments remain held until its active work
+has joined and close confirms retirement. Reappearing and surviving sources wait behind that
+barrier. An uncertain close preserves the old assignments and cannot attest clean retirement.
+The SDK composes its canonical machine resource provider; OA creates no private scan budget.
+
+Ordinary shutdown joins every reconciliation, delivery, command, controller and native Source,
+then obtains each serve's joined `harness.v1.sessions.scan_resources.retire_readers`
+acknowledgement before closing its transport and releasing the OA writer lease. Transport
+close may force an exit and cannot replace that acknowledgement. A publisher acknowledges
+retirement on its private parent channel only after those joins succeed. The stack binds that
+acknowledgement to the exact launched publisher generation and also observes its exit. The
+install owner retains the complete stack result, bound to the exact install/source transaction,
+before removing readiness state. A deadline or forced/unknown exit is failure, never an
+acknowledgement. Source handover consumes this evidence; no administrative boolean can replace it.
+An older stack's existing bounded stop still permits closed lifecycle adoption, but retains
+an explicit unavailable retirement result. It cannot qualify the first resource grant. A
+capable predecessor must supply its full receipt before its resources can be called retired.
+
+The private inventory includes every publisher's actual stdio allocation hosts, read from that
+host's capabilities reply, with its PID, canonical launch entry and implementation entry. A
+retirement reply must match that exact observed host. Unknown/missing host identity leaves the
+census incomplete. Confirmed publisher/host receipts fold into a monotonic count and SHA-256
+chain, retaining the most recent 64 exact receipts. Up to 4,096 unresolved publisher generations
+remain in the live inventory; none is evicted. At capacity only a new publisher/restart is
+refused, while other services keep running. The stack's durable ready/retirement record carries
+the summaries, so ordinary restarts do not grow in-memory history without limit.
+
+The current kit inventory also names the exact tracked nonpublisher controller entries: the
+prepared valve/hookline scripts and selected native orchestrator services. Unknown entries,
+unacknowledged exited publishers and incomplete host snapshots keep the census incomplete.
+This supplies process identities for the source owner's independent OS reading, never a claim
+that an unlisted transient helper has retired or cannot allocate resources.
+
+This extends the ordinary shutdown proof, without changing ADR 0027's separate dead-parent OA
+writer recovery: recovery never infers that private SDK children have retired. OA item IDs,
+session keys, continuations, checkpoints, audience rules and frozen attribution remain unchanged.
+The public books and their writer custody stay with OA; native reconstruction and disposable
+resource retirement stay with Supercode, following “The platform shows; it does not steer.”
+Independent constitution and implementation review is required; this proposal claims no live proof.

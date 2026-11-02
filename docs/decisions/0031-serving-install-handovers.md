@@ -83,3 +83,21 @@ The source transaction restores the exact previous bytes before restarting prede
 v4 receipt identifies `program_kind: node` and its selected program; its `native` field remains only the established
 control protocol's pathname alias. A kit selects that complete retained closure. Runtime and program admission do not
 change D215/D217, release authority, privacy grants, custody or the separately permitted first adoption.
+
+## VO-3758: retire readers before native authority transfer (proposed)
+
+The transaction-only `park-readers` action moves a prepared kit to `readers_parked`. It stops
+and joins the exact predecessor stack while that stack's native scan-resource authority still
+serves cleanup. The owner persists the generation-bound reader retirement result before removing
+readiness, retaining the predecessor selection and source transaction. Native activation follows;
+the existing kit activation then starts the prepared successor against the serving native inputs.
+Rollback still requires the source coordinator's restored native decision before restarting any
+predecessor kit. Preparation itself continues to leave the serving generation intact.
+
+The owner advertises the action in its status capabilities. A legacy owner without it retains
+the existing closed-adoption lifecycle; an absent/uncertain cleanup result never qualifies a
+first scan-resource grant. A capable predecessor's cleanup must supply the real joined receipts
+described in ADR 0016. Exit, a forced stop, a deadline and an administrative flag cannot replace
+them. This orders the existing kit and native responsibilities without changing the platform's
+role, independent host services, one-writer rule, source rollback bytes, grants or release authority.
+Independent constitution and implementation review remains required; no observed proof is claimed.

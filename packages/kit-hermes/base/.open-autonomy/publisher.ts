@@ -52,6 +52,7 @@ import { nativeRuntime, NativeRuntime } from './native-runtime.ts';
 import { OwnerControlState, OwnerController } from './owner-control.ts';
 import { PublicationStore } from './publication.ts';
 import { TranscriptQueue } from './transcript-queue.ts';
+import { PublisherReaders } from './reader-retirement.ts';
 import { initializeWorkLedger, closeWorkLedger, recordWork, measureWork, responseWork, spawnWork, stopWorkChild } from './work-ledger.ts';
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
@@ -172,6 +173,7 @@ const reader = container ? inContainer([supercode, 'harness', 'serve']) : superc
 // An orchestrator home travels in each query and in the runtime's root. SUPERCODE_HOME stays the machine's supercode
 // home: its source lock and machine door (the session index answers through that door), never the orchestrator's.
 const nativeEnvironment = { ...process.env, ...(selectedRuntime.kind === 'hermes' ? { HERMES_HOME: home } : {}) } as Record<string, string>;
+const readerHosts = new PublisherReaders();
 const sc = new HarnessClient({ command: reader[0], args: reader.slice(1), env: nativeEnvironment });
 const runtime = new NativeRuntime(selectedRuntime, sc);
 const ownerState = new OwnerControlState(stateFile, { account: cfg.account, apiBase: `${(cfg.platform ?? 'https://open-autonomy.org').replace(/\/$/, '')}/v1`, nativeRuntime: selectedRuntime });
@@ -194,20 +196,29 @@ function shutdown(code: number): Promise<void> {
   activeSource?.close(); stopNarrative();
   shutdownWork = (async () => {
     try {
-      await Promise.all([controller.stop(), activeSource?.stop(), narrativeWork, stopTranscripts()]);
-      await activePublication?.close();
-      await Promise.allSettled(commands);
-      if (commandFailures.size) throw [...commandFailures][0];
+      const failures: unknown[] = [];
+      const join = async (work: Array<Promise<unknown>>): Promise<void> => {
+        for (const result of await Promise.allSettled(work)) if (result.status === 'rejected') failures.push(result.reason);
+      };
+      // A refusal never ends these joins early: no source or checkpoint writer may survive a clean lease release.
+      await join([Promise.resolve().then(() => controller.stop()), Promise.resolve().then(() => activeSource?.stop()),
+        Promise.resolve().then(() => narrativeWork), Promise.resolve().then(() => stopTranscripts())]);
+      await join([Promise.resolve().then(() => activePublication?.close())]);
+      await join([...commands]); failures.push(...commandFailures);
+      await join([readerHosts.retire(sc)]);
+      if (failures.length) throw new AggregateError(failures, `Publisher retirement is uncertain: ${failures.map(error => (error as Error).message).join('; ')}`);
+      ownerState.close();
+      await closeWorkLedger();
+      await readerHosts.acknowledge();
     }
-    catch (error) { log(`shutdown retains uncertain publication ownership: ${(error as Error).message}`); try { await sc.close(); } finally { await closeWorkLedger(); } process.exit(1); }
-    try { await sc.close(); ownerState.close(); } finally { await closeWorkLedger(); }
+    catch (error) { log(`shutdown could not confirm complete reader retirement: ${(error as Error).message}`); await closeWorkLedger(); process.exit(1); }
     process.exit(code);
   })();
   return shutdownWork;
 }
 for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(signal, () => { void shutdown(0); });
 sc.on('exit', code => { if (!quitting) { log(`Volter Harness reader exited (${code})`); void shutdown(1); } });
-await sc.start(); controller.start();
+await readerHosts.open(sc); controller.start();
 process.send?.({ type: 'reporter-ready' });
 const configWatch = watchFiles(configPath, () => { log('configuration changed; restart required'); void shutdown(1); });
 stopNarrative = () => configWatch.close();
@@ -368,10 +379,17 @@ function retryLater(key: string, delay: number): void {
 }
 const sessionReaders = new Map<string, SupercodeHarnessClient>();
 const transcripts = new TranscriptQueue(4,
-  () => new HarnessClient({ command: reader[0], args: reader.slice(1), env: nativeEnvironment }),
+  () => {
+    const client = new HarnessClient({ command: reader[0], args: reader.slice(1), env: nativeEnvironment });
+    client.on('exit', (code: number) => transcripts.lost(client, new Error(`Transcript reader exited (${code}); retiring its generation`)));
+    void readerHosts.open(client);
+    return client;
+  },
   publishSession, (key, error) => { if (!quitting) log(`${key}: publication pending (${(error as Error).message})`); },
-  reader => reader.close());
+  reader => readerHosts.retire(reader));
 stopTranscripts = () => transcripts.close();
+const nativeSource = (d: SessionDescriptor): string => JSON.stringify([d.locator.harness, d.locator.session_id,
+  d.locator.storage.kind, d.locator.storage.path, d.locator.storage.kind === 'sqlite' ? d.locator.storage.selector : null]);
 // A refused session is said once per reason, then skipped on every pass until the board stops refusing it.
 const refused = new Map<string, string>();
 function refuse(key: string, error: SessionRefused): void {
@@ -400,7 +418,7 @@ function sessions(only?: string): void {
     refused.delete(key);
     if (stopped.has(key)) continue;
     if ((retryAt.get(key) ?? 0) > Date.now()) continue;
-    transcripts.enqueue(key);
+    transcripts.enqueue(key, nativeSource(d));
   }
 }
 // The source message count at which a resume's source held no more turns than its published end, so an unchanged
@@ -429,6 +447,7 @@ async function publishSession(key: string, reader: SupercodeHarnessClient): Prom
   } catch (error) { if (error instanceof SessionRefused) { refuse(key, error); return; } throw error; }
   sessionReaders.set(key, reader);
   try {
+    await readerHosts.open(reader);
     // A session published to its end that its card resumed continues as `<id>~<n>` only once its source holds more
     // turns than that end published. A resume that never ran or an older end the board outlived adds nothing to it.
     const published = checkpoints[platformKey(key)];
@@ -451,7 +470,7 @@ async function publishSession(key: string, reader: SupercodeHarnessClient): Prom
       evidence: exactAttempt ? `native-attempt:${exactAttempt.first.id}` : candidate ? `workspace:${d.cwd ?? d.workspace?.value ?? ''}` : 'unknown' }, oa));
     const completion = completionOf(d);
     let publisher = publishers.get(key);
-    if (!publisher || publisherItems.get(key) !== item) {
+    if (!publisher || publisherItems.get(key) !== item || nativeSource(publisher.descriptor) !== nativeSource(d)) {
       publisher = new TranscriptPublisher({ loadWindow: (locator, options) => sessionReaders.get(key)!.loadWindow(locator, options, { signal: narrativeAbort.signal, timeoutMs: 0 }) }, oa, cfg.account, d, { key: pkey, kind: kindOf(d), source: sourceOf(d), title: d.title ?? undefined, harness: d.locator.harness,
         modelProvider: isSeat(d) ? 'claude-code' : providerOf(d.profile), startedAt: bindings.get(key)?.started_at ?? undefined, item }, checkpoints[pkey], checkpoint => saveCheckpoint(pkey, checkpoint));
       publishers.set(key, publisher);
@@ -827,7 +846,9 @@ sc.on('sessionIndexEvent', ev => {
   if(quitting)return;
   if ('error' in ev) { log(`index unavailable: ${ev.error.message}`); return; }
   let membership = false;
-  for (const c of ev.changes) if (c.kind === 'removed') { descriptors.delete(c.key.session_id); membership = true; } else {
+  for (const c of ev.changes) if (c.kind === 'removed') {
+    descriptors.delete(c.key.session_id); transcripts.retire(c.key.session_id); membership = true;
+  } else {
     descriptors.set(c.descriptor.locator.session_id, c.descriptor);
     stopped.delete(c.descriptor.locator.session_id);
     sessionsDue.add(c.descriptor.locator.session_id);
