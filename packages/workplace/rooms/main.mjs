@@ -362,8 +362,9 @@ const orgPath = `/api/v3/organizations/${encodeURIComponent(config.rh2.organizat
 const activeAgents = (card) => Array.isArray(card.agents) ? card.agents.filter((agent) => agent && typeof agent.id === 'string' && agent.id && agent.state === 'active') : null;
 /** Whether an agent of the card works it right now, in its role: its reviewer while the card is in review; any other role,
  * its implementer among them, while it is worked (`running`) or in review; none while the card is paused or blocked. The
- * implementer keeps working while its PRs are reviewed: unseating it at each move between the two lanes re-seated the
- * same session, with its seating message and a call voice, at every board run. */
+ * implementer keeps its seat while its PRs are reviewed (its session codes on; at the final review it is closed and the
+ * seat waits for the findings or the card's close): unseating it at each move between the two lanes re-seated the same
+ * session, with its seating message and a call voice, at every board run. */
 const WORKING_LANES = { reviewer: ['review'] };
 const worksNow = (card, agent) => !cardHoldOf(card).state && (WORKING_LANES[agent.role] ?? ['running', 'review']).includes(card.lane ?? card.status);
 /** Whether the card's run session is in its Room now: the card worked or in review, neither paused nor blocked. */
