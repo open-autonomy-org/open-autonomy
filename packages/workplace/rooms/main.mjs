@@ -80,7 +80,7 @@ import { promisify } from 'node:util';
 // A card is seated in its project's Room only once it has started: a prepared card owes no seat, and a backlogged card
 // (accepted, not planned to start) owes none either. Bump the version when this rule or the registry's shape changes:
 // decisions and cards read under the old one are read again from a whole snapshot.
-const ARC_ROOM_LIFECYCLE_VERSION = 8;
+const ARC_ROOM_LIFECYCLE_VERSION = 9;
 const ENDED_LANES = new Set(['done', 'cancelled', 'archived', 'scheduled']);
 const arcRoomExpected = (card, closedLanes = ENDED_LANES) => Boolean(card.started_at) && !card.backlog
   && !card.removed && !card.archived && !card.every && !card.subtask_of && !closedLanes.has(card.lane ?? card.status);
@@ -337,9 +337,12 @@ async function closeOwnRoom(roomId) {
 const AGENT_ROLE_KEYS = config.agentRoleKeys ?? ['member'];
 const orgPath = `/api/v3/organizations/${encodeURIComponent(config.rh2.organization)}`;
 const activeAgents = (card) => Array.isArray(card.agents) ? card.agents.filter((agent) => agent && typeof agent.id === 'string' && agent.id && agent.state === 'active') : null;
-/** Whether an agent of the card works it right now, in its role: its implementer while the card is worked (`running`),
- * its reviewer while it is in review, any other role while either; none while the card is paused or blocked. */
-const WORKING_LANES = { implementer: ['running'], reviewer: ['review'] };
+/** Whether an agent of the card works it right now, in its role: its reviewer while the card is in review; any other role,
+ * its implementer among them, while it is worked (`running`) or in review; none while the card is paused or blocked. The
+ * implementer keeps its seat while its PRs are reviewed (its session codes on; at the final review it is closed and the
+ * seat waits for the findings or the card's close): unseating it at each move between the two lanes re-seated the same
+ * session, with its seating message and a call voice, at every board run. */
+const WORKING_LANES = { reviewer: ['review'] };
 const worksNow = (card, agent) => !cardHoldOf(card).state && (WORKING_LANES[agent.role] ?? ['running', 'review']).includes(card.lane ?? card.status);
 /** Whether the card's run session is in its Room now: the card worked or in review, neither paused nor blocked. */
 const cardRunsNow = (card) => !cardHoldOf(card).state && ['running', 'review'].includes(card.lane ?? card.status);
