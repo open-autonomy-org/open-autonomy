@@ -22,8 +22,8 @@
 // to review dormant Rooms; the program never confirms it for them: it closes its own Rooms whose projects have no live
 // card and says the refusal once.
 // The agents working a live card right now (the board's `card.agents` declarations, active, of an agent Teams has not
-// ended, holding a live assignment on the card's Task, in the role its card is in now: its implementer while the card is
-// worked (`running`), its reviewer while it is in review, any other role while either; none while the card is paused,
+// ended, holding a live assignment on the card's Task, in the role its card is in now: its reviewer while the card is in
+// review, its implementer and any other role while it is worked (`running`) or in review; none while the card is paused,
 // blocked or waiting, VO-3602: "a project Room holds only the agents working its cards right now") are brought into its
 // project's Room: resolved through the Workplace's resolve door to the
 // principal supercode's integration declared for that agent (`rh2.agentsRegistration`), and joined: the Workplace's join
@@ -33,7 +33,7 @@
 // base channel (`answers: all`); every other card agent receives the lines that name it (`answers: mentions`). The
 // program is the one writer of its seats' receive setting, and of which agents are in its Rooms: an agent in one that no
 // live card of the project names any more, or that Teams ended, leaves (`POST /api/v3/rooms/:roomId/leave`), whoever
-// brought it in, unless a person did (its seat's `seatedBy` is a person: their /invite). An agent whose card pauses, blocks or moves to the other role leaves,
+// brought it in, unless a person did (its seat's `seatedBy` is a person: their /invite). An agent whose card pauses, blocks or leaves its role's lanes leaves,
 // and comes back when its work resumes.
 // Each live card's run session is brought in beside them: the session participant the card's open board run links to as
 // its work (its Task's `work`, the `card-run` link supercode's integration writes; the owner: "it's actually the link to
