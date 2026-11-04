@@ -23,7 +23,9 @@
 // card and says the refusal once.
 // The agents working a live card right now (the board's `card.agents` declarations, active, of an agent Teams has not
 // ended, holding a live assignment on the card's Task, in the role its card is in now: its implementer while the card is
-// worked (`running`), its reviewer while it is in review, any other role while either; none while the card is paused,
+// worked (`running`) or in review (its session codes on while each PR is reviewed, so a card moving between the two keeps
+// its implementer seated; the owner, of it being told it was seated at every run: "why is it getting seated so many
+// times"), its reviewer while it is in review, any other role while either; none while the card is paused,
 // blocked or waiting, VO-3602: "a project Room holds only the agents working its cards right now") are brought into its
 // project's Room: resolved through the Workplace's resolve door to the
 // principal supercode's integration declared for that agent (`rh2.agentsRegistration`), and joined: the Workplace's join
@@ -33,8 +35,8 @@
 // base channel (`answers: all`); every other card agent receives the lines that name it (`answers: mentions`). The
 // program is the one writer of its seats' receive setting, and of which agents are in its Rooms: an agent in one that no
 // live card of the project names any more, or that Teams ended, leaves (`POST /api/v3/rooms/:roomId/leave`), whoever
-// brought it in, unless a person did (its seat's `seatedBy` is a person: their /invite). An agent whose card pauses, blocks or moves to the other role leaves,
-// and comes back when its work resumes.
+// brought it in, unless a person did (its seat's `seatedBy` is a person: their /invite). An agent whose card pauses or blocks leaves, as does its
+// reviewer when review ends, and comes back when its work resumes.
 // Each live card's run session is brought in beside them: the session participant the card's open board run links to as
 // its work (its Task's `work`, the `card-run` link supercode's integration writes; the owner: "it's actually the link to
 // the card that determines what should show a card"), whether the board started that session or a session was adopted
@@ -81,7 +83,7 @@ import { promisify } from 'node:util';
 // ---- the organization's conventions (volter-org decision 40cbcfe6) and the board's published card --------------------
 // A card is seated in its project's Room only once it has started: a prepared card owes no seat. Bump the version when
 // this rule or the registry's shape changes: decisions and cards read under the old one are read again from a whole snapshot.
-const ARC_ROOM_LIFECYCLE_VERSION = 7;
+const ARC_ROOM_LIFECYCLE_VERSION = 9;
 const ENDED_LANES = new Set(['done', 'cancelled', 'archived', 'scheduled']);
 const arcRoomExpected = (card, closedLanes = ENDED_LANES) => Boolean(card.started_at)
   && !card.removed && !card.archived && !card.every && !card.subtask_of && !closedLanes.has(card.lane ?? card.status);
@@ -358,9 +360,11 @@ async function closeOwnRoom(roomId) {
 const AGENT_ROLE_KEYS = config.agentRoleKeys ?? ['member'];
 const orgPath = `/api/v3/organizations/${encodeURIComponent(config.rh2.organization)}`;
 const activeAgents = (card) => Array.isArray(card.agents) ? card.agents.filter((agent) => agent && typeof agent.id === 'string' && agent.id && agent.state === 'active') : null;
-/** Whether an agent of the card works it right now, in its role: its implementer while the card is worked (`running`),
- * its reviewer while it is in review, any other role while either; none while the card is paused or blocked. */
-const WORKING_LANES = { implementer: ['running'], reviewer: ['review'] };
+/** Whether an agent of the card works it right now, in its role: its reviewer while the card is in review; any other role,
+ * its implementer among them, while it is worked (`running`) or in review; none while the card is paused or blocked. The
+ * implementer keeps working while its PRs are reviewed: unseating it at each move between the two lanes re-seated the
+ * same session, with its seating message and a call voice, at every board run. */
+const WORKING_LANES = { reviewer: ['review'] };
 const worksNow = (card, agent) => !cardHoldOf(card).state && (WORKING_LANES[agent.role] ?? ['running', 'review']).includes(card.lane ?? card.status);
 /** Whether the card's run session is in its Room now: the card worked or in review, neither paused nor blocked. */
 const cardRunsNow = (card) => !cardHoldOf(card).state && ['running', 'review'].includes(card.lane ?? card.status);
