@@ -268,9 +268,25 @@ function assertRecord(stateFile: string, expected: LeaseRecord): void {
   if (actual.pid !== process.pid || actual.nonce !== expected.nonce || !eq(actual, expected) || processStart(process.pid) !== expected.identity.start)
     throw new Error('Publication lease process, start identity or nonce changed');
 }
+// The host is confirmed only by an identity of its own (Darwin's hardware UUID, Linux's machine-id on both records). A
+// Linux host hash derived from its boot names that boot, not the machine, so across boots it confirms nothing.
+function confirmedHost(a: ExecutorIdentity, b: ExecutorIdentity): boolean {
+  return a.platform === b.platform && a.host === b.host && a.hostBasis !== 'boot' && b.hostBasis !== 'boot';
+}
+// A prior writer is recovered only on proof it is gone (ADR 0027, publication recovery).
+// - Different boot, confirmed host: proof of death. No process survives a reboot, and the lease lives on this host's
+//   local filesystem (localLeaseFilesystem), so any writer still holding it would run under the current boot. The PID
+//   namespace is not compared: a namespace names processes within one boot, and the reboot already proved them gone.
+// - Different boot, host unconfirmed (a boot-derived Linux identity, a machine-id basis that changed): unknown. The
+//   owner-attested handoff (acquireAttestedPublicationLease) is the door for it.
+// - Same boot: the namespace must match, and the PID must be absent or carry another kernel start identity.
+// A foreign or unknown host always refuses.
 function deadWriter(owner: LeaseRecord, executor: ExecutorIdentity): void {
   if (!compatibleHost(owner.identity, executor)) throw new Error('Publication lease belongs to another/unknown host');
-  if (owner.identity.boot !== executor.boot) throw new Error('Prior boot is unknown; explicit owner-attested lease handoff is required');
+  if (owner.identity.boot !== executor.boot) {
+    if (confirmedHost(owner.identity, executor)) return;
+    throw new Error('Prior boot on an unconfirmed (boot-derived) host identity is unknown; explicit owner-attested lease handoff is required');
+  }
   if (owner.identity.namespace !== executor.namespace) throw new Error('Publication lease belongs to another/unknown process namespace');
   const start = processStart(owner.pid);
   if (start !== undefined && start === owner.identity.start) throw new Error('Publication writer is still live; lease recovery refused');

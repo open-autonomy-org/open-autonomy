@@ -264,7 +264,7 @@ owner-asserted reconciliation audit: selected old phases, dispositions, original
 Prepared backup/manifest alone is never labelled applied. Interrupted writes retain originals and visible evidence.
 Success is reported only after the canonical write acknowledges; the backup and manifest are not another commit.
 No native job mutation, narrative checkpoint, enrollment, custody or Source-cache rewrite occurs. Normal owner intent
-is applied after publisher restart. ADR 0027 provides explicit attested prior-lease handoff when automatic same-boot
+is applied after publisher restart. ADR 0027 provides explicit attested prior-lease handoff when automatic
 recovery cannot acquire it. Historical/unknown effects thus have a product recovery door without inventing a native
 settlement protocol. Without positive completion or that evidence-backed owner reconciliation, the affected job stays
 pending while other controls and narration continue; any unknown phase forbids observed paused.

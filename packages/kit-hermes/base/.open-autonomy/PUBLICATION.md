@@ -115,8 +115,11 @@ boot and process namespace can recover a positively dead recorded owner under th
 identity-basis comparison; a recycled PID cannot supply the prior identity. Linux machine-id is optional: a valid
 read preserves machine-basis identity, otherwise a deterministic boot-basis diagnostic hash is used. Both
 machine-basis records must match host hashes; boot-basis recovery uses exact kernel boot/namespace identity
-within the exclusively owned local home. Neither basis establishes physical-host uniqueness. A different boot remains unknown and requires the explicit attested handoff
-below. Machine IDs alone cannot distinguish a physical host from a clone.
+within the exclusively owned local home. Neither basis establishes physical-host uniqueness. A different boot on a
+confirmed host (the same Darwin host UUID, or matching machine-basis Linux records) proves the recorded writer dead:
+no process survives a reboot, and the lease lives on this kernel's local filesystem, so a clone holds a copy of it,
+never this lease. The namespace is compared only within one boot. A different boot on a boot-basis or changed-basis
+Linux identity remains unknown and requires the explicit attested handoff below.
 Running, foreign, legacy or malformed ownership remains a refusal requiring explicit operator reconciliation.
 `release-lock --config FILE --nonce NONCE --same-executor-stopped` uses the same recorded-identity proof;
 the flag alone cannot establish an unknown executor or release a live owner. Age is not ownership evidence.
