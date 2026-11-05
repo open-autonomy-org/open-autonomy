@@ -41,6 +41,13 @@ processes are read again before each removal; nothing is removed while they cann
 stopped to free a generation. Known limit: age is the receipt's write time, so a later preparation that reuses an
 older generation's receipt instead of writing its own is judged by the older time.
 
+A host's service unit never names a generation. It runs the project checkout's `.open-autonomy/start-active.ts`, which
+at every start reads the kit owner's record (`kit-install.json`) and runs the selected generation's own start with that
+generation's receipt: the active install, else the predecessor of the transaction the record holds, else the
+generation the last stack ran. A unit that named one generation kept starting it after the pin rolled, where its
+receipt no longer matches the machine's source pin and its start refuses, and after retirement the path is gone.
+Activation therefore re-renders nothing; the unit is rendered once, onto the stable entry.
+
 The Codex proxy is a host service with a lifetime independent of the board and keeper generations. Bare keepers
 acquire its existing listener, identified by protocol, instance and a digest of the host Codex-home path. A missing
 listener is started in a detached service process. Because the proxy and the native board owner are not keeper
