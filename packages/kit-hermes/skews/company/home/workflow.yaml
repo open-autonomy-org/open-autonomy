@@ -308,8 +308,28 @@ run:
     reviewer: { role: reviewer, session: reviewer, prompt_file: prompts/reviewer.md }
     auditor: { role: auditor, session: auditor, prompt_file: prompts/auditor.md }
   limits: { runtime: card.max_runtime_seconds, grace: params.session_grace_seconds }
-  states: { review_settled: {}, held_idle: {}, active: {}, waiting_machine: {}, failed: {}, blocked: {}, completed: {} }
+  states: { review_settled: {}, held_idle: {}, closed: {}, active: {}, waiting_machine: {}, failed: {}, blocked: {}, completed: {} }
   on:
+    dependency_resolved:
+      - by: [platform]
+        guard: "run.slot_bound && !run.request_settled"
+        actions:
+          - relation: { remove: "{{event.on}}", reason: "{{event.reason}}" }
+          - reset: [failures]
+          - record: unblocked
+    dependency_cancelled:
+      - by: [platform]
+        guard: "run.slot_bound && !run.request_settled"
+        actions:
+          - relation: { remove: "{{event.on}}", reason: "{{event.reason}}" }
+          - ask: { to: "{{params.managers[0]}}", text: "{{card.id}} run {{run.id}} waited on {{event.on}}, which was cancelled. What replaces it?" }
+          - relation: { add: "{{asked}}", reason: "blocking card cancelled" }
+          - end_run: { outcome: blocked }
+          - record: dependency_cancelled
+    block_aged:
+      - by: [platform]
+        guard: "run.slot_bound && !run.request_settled"
+        actions: [{ record: { kind: block_aged, payload: { on: "{{event.on}}", reason: "{{event.reason}}" } } }]
     start:
       - by: [platform, manager, creator]
         guard: "run.slot_bound && run.ended_at != null && !run.request_settled && !run.incident_hold && !card.dispatch_hold && card.paused == null && card.backlog == null && !card.archived && card.blocked_by.size() == 0"
@@ -413,7 +433,7 @@ run:
         actions: [{ extend_claim: null }, { reset: [goal_turns] }, { record: heartbeat }]
     session_idle:
       - by: [platform]
-        guard: "card.blocked_by.size() > 0 || card.paused != null || (card.last_events.heartbeat != null && card.last_events.heartbeat.created_at >= run.started_at && (card.last_events.heartbeat.payload.until ?? 0) > now)"
+        guard: "card.blocked_by.size() > 0 || card.paused != null || (run.last_events.heartbeat != null && run.last_events.heartbeat.created_at >= run.started_at && (run.last_events.heartbeat.payload.until ?? 0) > now)"
       - by: [platform]
         guard: "event.turns >= (card.goal_max_turns ?? params.goal_max_turns)"
         target: blocked
@@ -440,26 +460,27 @@ run:
     finished: [{ by: [platform], target: completed, actions: [{ end_run: { outcome: completed } }] }]
   outcomes:
     failed:
-      - guard: card.counters.failures >= (card.max_retries ?? params.failure_limit)
+      - guard: run.counters.failures >= (card.max_retries ?? params.failure_limit)
         actions:
-          - ask: { to: "{{params.managers[0]}}", text: "{{card.id}} reached its failure limit: {{event.error}}. What should happen next?" }
+          - ask: { to: "{{params.managers[0]}}", text: "{{card.id}} run {{run.id}} reached its failure limit: {{event.error ?? run.error}}. What should happen next?" }
           - relation: { add: "{{asked}}", reason: "failure limit reached" }
           - record: gave_up
     blocked:
       - actions:
-          - ask: { to: "{{params.managers[0]}}", text: "{{card.id}} cannot continue its run: {{event.error ?? 'its session stopped deciding'}}. What unblocks it?" }
+          - ask: { to: "{{params.managers[0]}}", text: "{{card.id}} run {{run.id}} cannot continue: {{event.error ?? run.error ?? 'its session stopped deciding'}}. What unblocks it?" }
           - relation: { add: "{{asked}}", reason: "run needs a decision" }
           - record: blocked
     completed:
-      - guard: card.every != null
+      - guard: "!run.slot_bound && card.every != null"
         actions: [{ card_event: { name: complete, as: [platform] } }]
       # an arc whose session finished waits for the dispatcher, which starts its final review once its tasks close
-      - guard: "card.status == 'running' && card.subtask_of == null"
+      - guard: "!run.slot_bound && card.status == 'running' && card.subtask_of == null"
         actions: []
       # a reviewer that recorded its verdict in this run has already mailed it to the manager
-      - guard: "card.last_events.review_pass != null && card.last_run.started_at != null && card.last_events.review_pass.created_at >= card.last_run.started_at"
+      - guard: "!run.slot_bound && run.last_events.review_pass != null && run.last_events.review_pass.created_at >= run.started_at"
         actions: []
-      - actions: [{ ask: { to: "{{params.managers[0]}}", text: "{{card.id}} ended its run without a terminal verdict request. Obtain the recorded review before accepting it. {{params.request_rules.done}} {{params.request_denial}}" } }]
+      - guard: "!run.slot_bound"
+        actions: [{ ask: { to: "{{params.managers[0]}}", text: "{{card.id}} ended its run without a terminal verdict request. Obtain the recorded review before accepting it. {{params.request_rules.done}} {{params.request_denial}}" } }]
 dispatch:
   tick: params.dispatch_interval_seconds
   start: start
