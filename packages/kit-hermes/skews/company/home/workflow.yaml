@@ -336,6 +336,36 @@ run:
         actions:
           - end_run: { outcome: changes_requested, settle_request: true, summary: "{{event.reason}}" }
           - record: { on: "{{card.id}}", kind: changes_requested, payload: { reason: "{{event.reason}}", reviewer: "{{run.profile}}" } }
+    set:
+      - by: [manager, creator]
+        guard: "run.slot_bound && !run.request_settled && event.field == 'assignee' && event.value in lanes && event.value != card.implementer && event.value != params.org_layer"
+        actions:
+          - forget_session: { slot: "{{run.slot}}", assignee: "{{event.value}}" }
+          - end_run: { outcome: reconfigured }
+          - assign: { field: assignee, value: "{{event.value}}" }
+          - reset: [failures]
+          - record: run_reconfigured
+      - by: [manager, creator]
+        guard: "run.slot_bound && !run.request_settled && event.field == 'machine'"
+        actions:
+          - forget_session: "{{run.slot}}"
+          - end_run: { outcome: reconfigured }
+          - assign: { field: machine, value: "{{event.value}}" }
+          - reset: [failures]
+          - record: run_reconfigured
+      - by: [manager, creator]
+        guard: "run.slot_bound && !run.request_settled && event.field == 'model'"
+        actions:
+          - end_run: { outcome: reconfigured }
+          - assign: { field: model_override, value: "{{event.value}}" }
+          - assign: { field: provider_override, value: "{{event.provider}}" }
+          - reset: [failures]
+          - record: run_reconfigured
+    replace_session:
+      - by: [manager, creator]
+        guard: "run.slot_bound && !run.request_settled"
+        target: closed
+        actions: [{ forget_session: "{{run.slot}}" }, { end_run: { outcome: reclaimed } }]
     return_review:
       - by: [manager, creator]
         guard: "run.slot_bound && !run.request_settled"
