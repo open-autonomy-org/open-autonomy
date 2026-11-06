@@ -308,8 +308,68 @@ run:
     reviewer: { role: reviewer, session: reviewer, prompt_file: prompts/reviewer.md }
     auditor: { role: auditor, session: auditor, prompt_file: prompts/auditor.md }
   limits: { runtime: card.max_runtime_seconds, grace: params.session_grace_seconds }
-  states: { active: {}, waiting_machine: {}, failed: {}, blocked: {}, completed: {} }
+  states: { review_settled: {}, held_idle: {}, active: {}, waiting_machine: {}, failed: {}, blocked: {}, completed: {} }
   on:
+    start:
+      - by: [platform, manager, creator]
+        guard: "run.slot_bound && run.ended_at != null && !run.request_settled && !run.incident_hold && !card.dispatch_hold && card.paused == null && card.backlog == null && !card.archived && card.blocked_by.size() == 0"
+        target: active
+        actions: [{ claim: reviewer }]
+    request_state:
+      - by: [reviewer]
+        guard: "run.slot_bound && event.state == 'done'"
+        target: review_settled
+        actions:
+          - end_run: { outcome: pr_review_passed, settle_request: true, summary: "PR review passed at {{event.reviewed_sha}}: {{event.reason}}" }
+          - record: { on: "{{card.id}}", kind: pr_review_pass, payload: { state: done, reason: "{{event.reason}}", evidence: "{{event.evidence}}", ci: "{{event.ci}}", reviewed_sha: "{{event.reviewed_sha}}", reviewer: "{{run.profile}}" } }
+    complete:
+      - by: [reviewer]
+        guard: "run.slot_bound"
+        target: review_settled
+        actions:
+          - end_run: { outcome: pr_review_passed, settle_request: true, summary: "PR review passed at {{event.reviewed_sha}}: {{event.summary ?? event.result}}" }
+          - record: { on: "{{card.id}}", kind: pr_review_pass, payload: { reason: "{{event.summary ?? event.result}}", ci: "{{event.ci}}", reviewed_sha: "{{event.reviewed_sha}}", reviewer: "{{run.profile}}" } }
+    request_changes:
+      - by: [reviewer]
+        guard: "run.slot_bound"
+        target: review_settled
+        actions:
+          - end_run: { outcome: changes_requested, settle_request: true, summary: "{{event.reason}}" }
+          - record: { on: "{{card.id}}", kind: changes_requested, payload: { reason: "{{event.reason}}", reviewer: "{{run.profile}}" } }
+    reclaim:
+      - by: [platform, manager, creator]
+        guard: "run.slot_bound && !run.request_settled"
+        target: closed
+        actions: [{ end_run: { outcome: reclaimed } }]
+    block:
+      - by: [platform, manager]
+        target: held_idle
+        actions: [{ record: run_blocked }]
+    unblock:
+      - by: [platform, manager, implementer, reviewer, arc]
+        guard: "card.blocked_by.size() == 0 && card.paused == null && card.backlog == null && !run.incident_hold"
+        target: active
+        actions: [{ record: run_unblocked }]
+    pause:
+      - by: [platform, manager]
+        guard: "run.slot_bound"
+        target: closed
+        actions: [{ end_run: { outcome: paused } }]
+    cancel:
+      - by: [platform, manager, creator, arc]
+        guard: "run.slot_bound"
+        target: closed
+        actions: [{ end_run: { outcome: cancelled, settle_request: true } }]
+    archive:
+      - by: [platform, manager, creator]
+        guard: "run.slot_bound"
+        target: closed
+        actions: [{ end_run: { outcome: archived, settle_request: true } }]
+    backlog:
+      - by: [platform, manager, implementer, reviewer, arc]
+        guard: "run.slot_bound"
+        target: closed
+        actions: [{ end_run: { outcome: backlogged, settle_request: true } }]
     heartbeat:
       - by: [implementer, reviewer, auditor, manager]
         description: 'Extends this run''s claim: --note "<what>" [--until <time|duration>]. A deadline records this run''s wait until that time.'
