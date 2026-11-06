@@ -336,6 +336,13 @@ run:
         actions:
           - end_run: { outcome: changes_requested, settle_request: true, summary: "{{event.reason}}" }
           - record: { on: "{{card.id}}", kind: changes_requested, payload: { reason: "{{event.reason}}", reviewer: "{{run.profile}}" } }
+    return_review:
+      - by: [manager, creator]
+        guard: "run.slot_bound && !run.request_settled"
+        target: review_settled
+        actions:
+          - end_run: { outcome: returned, settle_request: true, summary: "{{event.reason}}" }
+          - record: { on: "{{card.id}}", kind: review_returned, payload: { reason: "{{event.reason}}", reviewer: "{{run.profile}}" } }
     reclaim:
       - by: [platform, manager, creator]
         guard: "run.slot_bound && !run.request_settled"
