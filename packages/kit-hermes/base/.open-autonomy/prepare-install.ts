@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { installHostRuntime, runtimeInstallIdentity, machinePublishedBinding, machineSourceReceipt } from './install-runtime.ts';
+import { assertCompleteSource, checkoutCompleteSource } from './complete-source.ts';
 
 export type InstallReceipt = { version: 1; kind: 'open-autonomy-install'; home: string; sourceProject: string; project: string;
   entry: string; revision: string; kitVersion: string; runtimeIdentity: string; source: string | null; release: string | null; registry: string; archive: string | null; receipt: string;
@@ -113,7 +114,7 @@ export async function prepareInstall({ project, home, revision, source = null, r
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   // A failed preparation stays for diagnosis until the next activation finishes. Preparation itself deletes, rewrites
   // or checks out no existing generation.
-  await run(['git', 'worktree', 'add', '--detach', snapshot, commit], project);
+  await checkoutCompleteSource(project, snapshot, commit, run);
   const host = resolve(snapshot, '.open-autonomy');
   if (archive) {
     const copied = resolve(directory, statSync(archive).isDirectory() ? 'artifacts' : 'runtime.tgz');
@@ -134,6 +135,7 @@ export async function prepareInstall({ project, home, revision, source = null, r
   if (!setup || (kit.kit !== 'ir' && agentHarness(setup) === 'hermes')) throw new Error('this candidate lacks the native gateway readiness protocol; the serving install was preserved');
   const identity = runtimeInstallIdentity({ directory: host, environment: env, registry, archive });
   writeFileSync(resolve(host, 'node_modules/.open-autonomy-install'), `${identity}\n`);
+  assertCompleteSource(snapshot, commit);
   const receipt: InstallReceipt = { version: 1, kind: 'open-autonomy-install', home, sourceProject: project, project: snapshot,
     entry: resolve(host, 'start.ts'), revision: commit, kitVersion: kit.version, runtimeIdentity: identity, source, release, registry, archive: archive ?? null,
     receipt: resolve(directory, 'install.json'), initiator: await installInitiator(environment, supercodeRootOf(source, release)) };
@@ -149,6 +151,7 @@ export function readInstall(path: string, home: string): InstallReceipt {
     || receipt.entry !== resolve(receipt.project, '.open-autonomy/start.ts')) throw new Error('kit receipt is not an install prepared for this home');
   const metadata = spawnSyncWork(() => Bun.spawnSync(['git', '-C', receipt.project, 'rev-parse', 'HEAD']));
   if (metadata.exitCode !== 0 || metadata.stdout.toString().trim() !== receipt.revision) throw new Error('prepared kit project commit changed');
+  assertCompleteSource(receipt.project, receipt.revision);
   const status = spawnSyncWork(() => Bun.spawnSync(['git', '-C', receipt.project, 'status', '--porcelain', '--untracked-files=no']));
   if (status.exitCode !== 0 || status.stdout.toString().trim()) throw new Error('prepared kit tracked inputs changed');
   return receipt;
