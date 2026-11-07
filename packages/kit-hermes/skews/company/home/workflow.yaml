@@ -154,7 +154,7 @@ verbs:
   request_state:
     # A PR pass returns only this ready PR to its implementer; it never accepts the whole arc.
     - by: [reviewer]
-      guard: "(event.state == 'done' && card.subtask_of == null && card.status == 'review' && (card.last_events.pr_review_requested.id ?? 0) > (card.last_events.review_requested.id ?? 0))"
+      guard: "(event.state == 'done' && card.subtask_of == null && card.status == 'review' && card.review_kind == 'pr')"
       description: "Pass the ready PR at its reviewed head; the arc's other tasks and Acceptance may remain open."
       target: running
       actions:
@@ -179,7 +179,7 @@ verbs:
               Evidence: {{event.evidence ?? 'none supplied'}}
               Rules: {{params.request_rules[event.state]}}
               {{params.request_denial}}
-        - record: { kind: "{{event.state == 'done' && 'reviewer' in sender ? 'review_pass' : 'state_requested'}}", payload: { message_id: "{{asked}}", state: "{{event.state}}", reason: "{{event.reason}}", until: "{{event.until}}", evidence: "{{event.evidence}}", requester: "{{requester}}", ci: "{{event.ci}}", deployed_sha: "{{event.deployed_sha}}", reviewed_sha: "{{event.reviewed_sha}}" } }
+        - record: { kind: "{{event.state == 'done' && 'reviewer' in sender && card.subtask_of == null && card.status == 'review' && card.review_kind == 'final' ? 'review_pass' : 'state_requested'}}", payload: { message_id: "{{asked}}", state: "{{event.state}}", reason: "{{event.reason}}", until: "{{event.until}}", evidence: "{{event.evidence}}", requester: "{{requester}}", ci: "{{event.ci}}", deployed_sha: "{{event.deployed_sha}}", reviewed_sha: "{{event.reviewed_sha}}" } }
   request_review:
     - from: [running]
       by: [platform]
@@ -337,14 +337,14 @@ run:
         actions: [{ claim: reviewer }]
     request_state:
       - by: [reviewer]
-        guard: "run.slot_bound && event.state == 'done'"
+        guard: "run.slot_bound && card.review_kind == 'pr' && event.state == 'done'"
         target: review_settled
         actions:
           - end_run: { outcome: pr_review_passed, settle_request: true, summary: "PR review passed at {{event.reviewed_sha}}: {{event.reason}}" }
           - record: { on: "{{card.id}}", kind: pr_review_pass, payload: { state: done, reason: "{{event.reason}}", evidence: "{{event.evidence}}", ci: "{{event.ci}}", reviewed_sha: "{{event.reviewed_sha}}", reviewer: "{{run.profile}}" } }
     complete:
       - by: [reviewer]
-        guard: "run.slot_bound"
+        guard: "run.slot_bound && card.review_kind == 'pr'"
         target: review_settled
         actions:
           - end_run: { outcome: pr_review_passed, settle_request: true, summary: "PR review passed at {{event.reviewed_sha}}: {{event.summary ?? event.result}}" }
