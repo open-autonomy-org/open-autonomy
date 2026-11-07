@@ -24,6 +24,18 @@ connector/mail generation and kit before transferring authority. Only exact acti
 atomic source commit (or the complete retained npm release decision). Published kits bind the same machine-owned
 retained closure instead of a global npm directory that installation can replace. One writer holds each shared store. A timed-out candidate never gains authority by starting.
 
+The prepared project is the entire selected committed tree, including every declared Git-pinned source input;
+the caller's sparse patterns and skip-worktree bits never define its inputs. Preparation populates its new owned
+index and worktree from Git objects with sparsity disabled for that operation, without changing the caller's
+files, index visibility or sparse configuration. Native submodule initialization retains its existing URL
+registration behavior. Preparation discovers Gitlinks from the selected tree and materializes their exact commits
+recursively. Before dependency installation and again at receipt admission, one complete-tree reader requires
+every declared directory, file, symlink and Gitlink tree with its expected kind. A symlink is retained as a link;
+its external target is not copied. An unavailable input refuses with its project-relative path, selected commit
+or Gitlink pin and original native cause. A clean sparse status cannot admit an incomplete generation. This
+input rule uses the existing receipt and accepts complete historical generations regardless of sparse settings
+or package version; it changes neither retained archives nor runtime identity protocols.
+
 Before commit, failure restores and reads back the previous source ledger, machine and board selections before
 predecessor kits restart. A failed kit candidate retains its reservation for that coordinated rollback, including
 after its owner restarts; it never independently restarts an old kit against successor native inputs. The reservation
