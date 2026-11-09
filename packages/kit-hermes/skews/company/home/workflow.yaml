@@ -154,7 +154,7 @@ verbs:
   request_state:
     # A PR pass returns only this ready PR to its implementer; it never accepts the whole arc.
     - by: [reviewer]
-      guard: "(event.state == 'done' && card.subtask_of == null && card.status == 'review' && card.review_kind == 'pr')"
+      guard: "(event.state == 'done' && card.subtask_of == null && card.status == 'review' && (card.last_events.pr_review_requested.id ?? 0) > (card.last_events.review_requested.id ?? 0))"
       description: "Pass the ready PR at its reviewed head; the arc's other tasks and Acceptance may remain open."
       target: running
       actions:
@@ -179,7 +179,7 @@ verbs:
               Evidence: {{event.evidence ?? 'none supplied'}}
               Rules: {{params.request_rules[event.state]}}
               {{params.request_denial}}
-        - record: { kind: "{{event.state == 'done' && 'reviewer' in sender && card.subtask_of == null && card.status == 'review' && card.review_kind == 'final' ? 'review_pass' : 'state_requested'}}", payload: { message_id: "{{asked}}", state: "{{event.state}}", reason: "{{event.reason}}", until: "{{event.until}}", evidence: "{{event.evidence}}", requester: "{{requester}}", ci: "{{event.ci}}", deployed_sha: "{{event.deployed_sha}}", reviewed_sha: "{{event.reviewed_sha}}" } }
+        - record: { kind: "{{event.state == 'done' && 'reviewer' in sender ? 'review_pass' : 'state_requested'}}", payload: { message_id: "{{asked}}", state: "{{event.state}}", reason: "{{event.reason}}", until: "{{event.until}}", evidence: "{{event.evidence}}", requester: "{{requester}}", ci: "{{event.ci}}", deployed_sha: "{{event.deployed_sha}}", reviewed_sha: "{{event.reviewed_sha}}" } }
   request_review:
     - from: [running]
       by: [platform]
@@ -308,132 +308,15 @@ run:
     reviewer: { role: reviewer, session: reviewer, prompt_file: prompts/reviewer.md }
     auditor: { role: auditor, session: auditor, prompt_file: prompts/auditor.md }
   limits: { runtime: card.max_runtime_seconds, grace: params.session_grace_seconds }
-  states: { review_settled: {}, held_idle: {}, closed: {}, active: {}, waiting_machine: {}, failed: {}, blocked: {}, completed: {} }
+  states: { active: {}, waiting_machine: {}, failed: {}, blocked: {}, completed: {} }
   on:
-    dependency_resolved:
-      - by: [platform]
-        guard: "run.slot_bound && !run.request_settled"
-        actions:
-          - relation: { remove: "{{event.on}}", reason: "{{event.reason}}" }
-          - reset: [failures]
-          - record: unblocked
-    dependency_cancelled:
-      - by: [platform]
-        guard: "run.slot_bound && !run.request_settled"
-        actions:
-          - relation: { remove: "{{event.on}}", reason: "{{event.reason}}" }
-          - ask: { to: "{{params.managers[0]}}", text: "{{card.id}} run {{run.id}} waited on {{event.on}}, which was cancelled. What replaces it?" }
-          - relation: { add: "{{asked}}", reason: "blocking card cancelled" }
-          - end_run: { outcome: blocked }
-          - record: dependency_cancelled
-    block_aged:
-      - by: [platform]
-        guard: "run.slot_bound && !run.request_settled"
-        actions: [{ record: { kind: block_aged, payload: { on: "{{event.on}}", reason: "{{event.reason}}" } } }]
-    start:
-      - by: [platform, manager, creator]
-        guard: "run.slot_bound && run.ended_at != null && !run.request_settled && !run.incident_hold && !card.dispatch_hold && card.paused == null && card.backlog == null && !card.archived && card.blocked_by.size() == 0"
-        target: active
-        actions: [{ claim: reviewer }]
-    request_state:
-      - by: [reviewer]
-        guard: "run.slot_bound && card.review_kind == 'pr' && event.state == 'done'"
-        target: review_settled
-        actions:
-          - end_run: { outcome: pr_review_passed, settle_request: true, summary: "PR review passed at {{event.reviewed_sha}}: {{event.reason}}" }
-          - record: { on: "{{card.id}}", kind: pr_review_pass, payload: { state: done, reason: "{{event.reason}}", evidence: "{{event.evidence}}", ci: "{{event.ci}}", reviewed_sha: "{{event.reviewed_sha}}", reviewer: "{{run.profile}}" } }
-    complete:
-      - by: [reviewer]
-        guard: "run.slot_bound && card.review_kind == 'pr'"
-        target: review_settled
-        actions:
-          - end_run: { outcome: pr_review_passed, settle_request: true, summary: "PR review passed at {{event.reviewed_sha}}: {{event.summary ?? event.result}}" }
-          - record: { on: "{{card.id}}", kind: pr_review_pass, payload: { reason: "{{event.summary ?? event.result}}", ci: "{{event.ci}}", reviewed_sha: "{{event.reviewed_sha}}", reviewer: "{{run.profile}}" } }
-    request_changes:
-      - by: [reviewer]
-        guard: "run.slot_bound"
-        target: review_settled
-        actions:
-          - end_run: { outcome: changes_requested, settle_request: true, summary: "{{event.reason}}" }
-          - record: { on: "{{card.id}}", kind: changes_requested, payload: { reason: "{{event.reason}}", reviewer: "{{run.profile}}" } }
-    set:
-      - by: [manager, creator]
-        guard: "run.slot_bound && !run.request_settled && event.field == 'assignee' && event.value in lanes && event.value != card.implementer && event.value != params.org_layer"
-        actions:
-          - forget_session: { slot: "{{run.slot}}", assignee: "{{event.value}}" }
-          - end_run: { outcome: reconfigured }
-          - assign: { field: assignee, value: "{{event.value}}" }
-          - reset: [failures]
-          - record: run_reconfigured
-      - by: [manager, creator]
-        guard: "run.slot_bound && !run.request_settled && event.field == 'machine'"
-        actions:
-          - forget_session: "{{run.slot}}"
-          - end_run: { outcome: reconfigured }
-          - assign: { field: machine, value: "{{event.value}}" }
-          - reset: [failures]
-          - record: run_reconfigured
-      - by: [manager, creator]
-        guard: "run.slot_bound && !run.request_settled && event.field == 'model'"
-        actions:
-          - end_run: { outcome: reconfigured }
-          - assign: { field: model_override, value: "{{event.value}}" }
-          - assign: { field: provider_override, value: "{{event.provider}}" }
-          - reset: [failures]
-          - record: run_reconfigured
-    replace_session:
-      - by: [manager, creator]
-        guard: "run.slot_bound && !run.request_settled"
-        target: closed
-        actions: [{ forget_session: "{{run.slot}}" }, { end_run: { outcome: reclaimed } }]
-    return_review:
-      - by: [manager, creator]
-        guard: "run.slot_bound && !run.request_settled"
-        target: review_settled
-        actions:
-          - end_run: { outcome: returned, settle_request: true, summary: "{{event.reason}}" }
-          - record: { on: "{{card.id}}", kind: review_returned, payload: { reason: "{{event.reason}}", reviewer: "{{run.profile}}" } }
-    reclaim:
-      - by: [platform, manager, creator]
-        guard: "run.slot_bound && !run.request_settled"
-        target: closed
-        actions: [{ end_run: { outcome: reclaimed } }]
-    block:
-      - by: [platform, manager]
-        target: held_idle
-        actions: [{ record: run_blocked }]
-    unblock:
-      - by: [platform, manager, implementer, reviewer, arc]
-        guard: "card.blocked_by.size() == 0 && card.paused == null && card.backlog == null && !run.incident_hold"
-        target: active
-        actions: [{ record: run_unblocked }]
-    pause:
-      - by: [platform, manager]
-        guard: "run.slot_bound"
-        target: closed
-        actions: [{ end_run: { outcome: paused } }]
-    cancel:
-      - by: [platform, manager, creator, arc]
-        guard: "run.slot_bound"
-        target: closed
-        actions: [{ end_run: { outcome: cancelled, settle_request: true } }]
-    archive:
-      - by: [platform, manager, creator]
-        guard: "run.slot_bound"
-        target: closed
-        actions: [{ end_run: { outcome: archived, settle_request: true } }]
-    backlog:
-      - by: [platform, manager, implementer, reviewer, arc]
-        guard: "run.slot_bound"
-        target: closed
-        actions: [{ end_run: { outcome: backlogged, settle_request: true } }]
     heartbeat:
       - by: [implementer, reviewer, auditor, manager]
         description: 'Extends this run''s claim: --note "<what>" [--until <time|duration>]. A deadline records this run''s wait until that time.'
         actions: [{ extend_claim: null }, { reset: [goal_turns] }, { record: heartbeat }]
     session_idle:
       - by: [platform]
-        guard: "card.blocked_by.size() > 0 || card.paused != null || (run.last_events.heartbeat != null && run.last_events.heartbeat.created_at >= run.started_at && (run.last_events.heartbeat.payload.until ?? 0) > now)"
+        guard: "card.blocked_by.size() > 0 || card.paused != null || (card.last_events.heartbeat != null && card.last_events.heartbeat.created_at >= run.started_at && (card.last_events.heartbeat.payload.until ?? 0) > now)"
       - by: [platform]
         guard: "event.turns >= (card.goal_max_turns ?? params.goal_max_turns)"
         target: blocked
@@ -460,27 +343,26 @@ run:
     finished: [{ by: [platform], target: completed, actions: [{ end_run: { outcome: completed } }] }]
   outcomes:
     failed:
-      - guard: run.counters.failures >= (card.max_retries ?? params.failure_limit)
+      - guard: card.counters.failures >= (card.max_retries ?? params.failure_limit)
         actions:
-          - ask: { to: "{{params.managers[0]}}", text: "{{card.id}} run {{run.id}} reached its failure limit: {{event.error ?? run.error}}. What should happen next?" }
+          - ask: { to: "{{params.managers[0]}}", text: "{{card.id}} reached its failure limit: {{event.error}}. What should happen next?" }
           - relation: { add: "{{asked}}", reason: "failure limit reached" }
           - record: gave_up
     blocked:
       - actions:
-          - ask: { to: "{{params.managers[0]}}", text: "{{card.id}} run {{run.id}} cannot continue: {{event.error ?? run.error ?? 'its session stopped deciding'}}. What unblocks it?" }
+          - ask: { to: "{{params.managers[0]}}", text: "{{card.id}} cannot continue its run: {{event.error ?? 'its session stopped deciding'}}. What unblocks it?" }
           - relation: { add: "{{asked}}", reason: "run needs a decision" }
           - record: blocked
     completed:
-      - guard: "!run.slot_bound && card.every != null"
+      - guard: card.every != null
         actions: [{ card_event: { name: complete, as: [platform] } }]
       # an arc whose session finished waits for the dispatcher, which starts its final review once its tasks close
-      - guard: "!run.slot_bound && card.status == 'running' && card.subtask_of == null"
+      - guard: "card.status == 'running' && card.subtask_of == null"
         actions: []
       # a reviewer that recorded its verdict in this run has already mailed it to the manager
-      - guard: "!run.slot_bound && run.last_events.review_pass != null && run.last_events.review_pass.created_at >= run.started_at"
+      - guard: "card.last_events.review_pass != null && card.last_run.started_at != null && card.last_events.review_pass.created_at >= card.last_run.started_at"
         actions: []
-      - guard: "!run.slot_bound"
-        actions: [{ ask: { to: "{{params.managers[0]}}", text: "{{card.id}} ended its run without a terminal verdict request. Obtain the recorded review before accepting it. {{params.request_rules.done}} {{params.request_denial}}" } }]
+      - actions: [{ ask: { to: "{{params.managers[0]}}", text: "{{card.id}} ended its run without a terminal verdict request. Obtain the recorded review before accepting it. {{params.request_rules.done}} {{params.request_denial}}" } }]
 dispatch:
   tick: params.dispatch_interval_seconds
   start: start
