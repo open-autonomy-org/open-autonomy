@@ -179,7 +179,7 @@ verbs:
               Evidence: {{event.evidence ?? 'none supplied'}}
               Rules: {{params.request_rules[event.state]}}
               {{params.request_denial}}
-        - record: { kind: "{{event.state == 'done' && 'reviewer' in sender ? 'review_pass' : 'state_requested'}}", payload: { message_id: "{{asked}}", state: "{{event.state}}", reason: "{{event.reason}}", until: "{{event.until}}", evidence: "{{event.evidence}}", requester: "{{requester}}", ci: "{{event.ci}}", deployed_sha: "{{event.deployed_sha}}", reviewed_sha: "{{event.reviewed_sha}}" } }
+        - record: { kind: "{{event.state == 'done' && 'reviewer' in sender && card.status == 'review' ? 'review_pass' : 'state_requested'}}", payload: { message_id: "{{asked}}", state: "{{event.state}}", reason: "{{event.reason}}", until: "{{event.until}}", evidence: "{{event.evidence}}", requester: "{{requester}}", ci: "{{event.ci}}", deployed_sha: "{{event.deployed_sha}}", reviewed_sha: "{{event.reviewed_sha}}" } }
   request_review:
     - from: [running]
       by: [platform]
