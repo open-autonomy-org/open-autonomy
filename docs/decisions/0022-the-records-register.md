@@ -36,9 +36,11 @@ had none of it.
    walks the roots `records.json` declares (every repository checkout, home and state directory of the install). A
    root whose last component is a pattern (`*`, `?`, a `[...]` class) names a family of directories, such as one
    checkout per release (`~/volter/supercode-v[0-9]*`), and each directory it matches when the estate runs is a root;
-   a directory named twice counts once. A root may instead be `{ "root": "<path>", "repository": "<owner>/<repo>" }`: a
-   checkout under it is that repository, read before its git origin, so a clone whose origin is a local path, or one that
-   no longer exists, keeps its identity. Without one, a local-path origin is followed to the repository it clones. For each root it gives its record count and every record with no entry or a
+   a directory named twice counts once. A root may instead be `{ "root": "<path>", "repository": "<owner>/<repo>" }`: the
+   checkout at that root (each member, for a family) is that repository, read before its git origin, so a clone whose
+   origin is a local path, or one that no longer exists, keeps its identity; a root that is not a git checkout stays
+   path-based, and a root named more than once takes the repository any of its entries declares. Without one, a
+   local-path origin is followed to the repository it clones. For each root it gives its record count and every record with no entry or a
    stub. A root of the install missing from
    the list is itself a finding. The roots are one machine's paths: `estate.machine` names that machine, and the
    estate run anywhere else refuses (exit 2) instead of reading every root as missing.

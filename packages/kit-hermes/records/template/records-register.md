@@ -17,7 +17,9 @@ entry, and stubs the entry (fields `TBD`) for the writer to complete. `records.j
 and which roots make up the estate the auditor counts (`estate.machine` names the machine they are on). A root whose last
 component holds a pattern (`*`, `?`, a `[...]` class) names a family of directories, such as one checkout per release
 (`~/volter/supercode-v[0-9]*`): each directory it matches when the estate runs is counted, and a checkout a declared
-family already matches is not added on its own. Both are written by `create-open-autonomy records init`.
+family already matches is not added on its own. A root written as `{ "root": "<path>", "repository": "<owner>/<repo>" }`
+names the repository its checkout is, for a clone whose origin is a local path or is gone. Both are written by
+`create-open-autonomy records init`.
 
 ## Volumes
 

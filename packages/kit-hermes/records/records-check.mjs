@@ -129,7 +129,11 @@ function walk(dir, out, base) {
 function estate(json) {
   const list = entries(root);
   // A root is a path, or { root, repository } naming the repository its checkouts are, read before any git origin.
-  const declared = (config.estate?.roots ?? []).map((entry) => typeof entry === 'string' ? { path: home(entry) } : { path: home(entry.root), repository: entry.repository });
+  const declared = (config.estate?.roots ?? []).map((entry) => {
+    if (typeof entry === 'string') return { path: home(entry) };
+    if (entry && typeof entry.root === 'string' && typeof entry.repository === 'string') return { path: home(entry.root), repository: entry.repository };
+    throw new Error(`records.json estate.roots: each root is a path or { "root": "<path>", "repository": "<owner>/<repo>" }, not ${JSON.stringify(entry)}`);
+  });
   if (declared.length === 0) { console.error('records: records.json names no estate roots ("estate": { "roots": [...] }): the denominator is empty'); return 2; }
   // The roots are paths on the machine where the install and its checkouts live; elsewhere they would all read as missing.
   // A machine is named as the fleet names it: macOS's LocalHostName (its hostname() is often just "Mac"), else the host
@@ -148,7 +152,7 @@ function estate(json) {
   // directory named twice (a family and a literal root) counts once.
   const seen = new Set();
   const named = new Map();
-  const add = (dir, repository) => { let key = resolve(dir); try { key = realpathSync(dir); } catch { /* reported as missing below */ } if (!seen.has(key)) { seen.add(key); roots.push(dir); if (repository) named.set(dir, repository); } };
+  const add = (dir, repository) => { let key = resolve(dir); try { key = realpathSync(dir); } catch { /* reported as missing below */ } if (!seen.has(key)) { seen.add(key); roots.push(dir); } if (repository) named.set(roots.find((r) => { try { return realpathSync(r) === key; } catch { return resolve(r) === key; } }) ?? dir, repository); };
   for (const { path: declaredRoot, repository: declaredRepository } of declared) {
     const dir = declaredRoot.replace(/\/+$/, '') || declaredRoot;
     const name = dir.split('/').pop() ?? '';
