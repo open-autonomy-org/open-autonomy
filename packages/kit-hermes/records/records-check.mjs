@@ -16,7 +16,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
-import { dirname, extname, join, relative, resolve } from 'node:path';
+import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 
 const STUB = 'TBD';
 const COLUMNS = ['Asset / original path', 'Purpose', 'Owner', 'Writers', 'Copies', 'Format', 'Classification', 'Access', 'Retention', 'Depends on / replaces', 'Evidence'];
@@ -71,11 +71,16 @@ function covered(list, repository, path) {
   return list.find((entry) => entry.repository === repository && (entry.path === path || path.startsWith(`${entry.path.replace(/\/+$/, '')}/`)));
 }
 
-const repositoryOf = (dir) => {
+// A clone of a local checkout is the repository that checkout is a clone of: a local-path origin is followed to its own origin.
+const repositoryOf = (dir, seen = new Set()) => {
   try {
     const url = execFileSync('git', ['-C', dir, 'remote', 'get-url', 'origin'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
     const m = /github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?$/.exec(url);
-    return m ? `${m[1]}/${m[2]}` : null;
+    if (m) return `${m[1]}/${m[2]}`;
+    const local = url.startsWith('file://') ? url.slice('file://'.length) : url;
+    if (!isAbsolute(local) || seen.has(resolve(local)) || seen.size >= 8) return null;
+    seen.add(resolve(local));
+    return repositoryOf(local, seen);
   } catch { return null; }
 };
 
@@ -123,7 +128,8 @@ function walk(dir, out, base) {
 
 function estate(json) {
   const list = entries(root);
-  const declared = (config.estate?.roots ?? []).map(home);
+  // A root is a path, or { root, repository } naming the repository its checkouts are, read before any git origin.
+  const declared = (config.estate?.roots ?? []).map((entry) => typeof entry === 'string' ? { path: home(entry) } : { path: home(entry.root), repository: entry.repository });
   if (declared.length === 0) { console.error('records: records.json names no estate roots ("estate": { "roots": [...] }): the denominator is empty'); return 2; }
   // The roots are paths on the machine where the install and its checkouts live; elsewhere they would all read as missing.
   // A machine is named as the fleet names it: macOS's LocalHostName (its hostname() is often just "Mac"), else the host
@@ -141,11 +147,12 @@ function estate(json) {
   // that cannot be read (a dangling link) is skipped. A family that matches nothing is reported, not missing. A
   // directory named twice (a family and a literal root) counts once.
   const seen = new Set();
-  const add = (dir) => { let key = resolve(dir); try { key = realpathSync(dir); } catch { /* reported as missing below */ } if (!seen.has(key)) { seen.add(key); roots.push(dir); } };
-  for (const declaredRoot of declared) {
+  const named = new Map();
+  const add = (dir, repository) => { let key = resolve(dir); try { key = realpathSync(dir); } catch { /* reported as missing below */ } if (!seen.has(key)) { seen.add(key); roots.push(dir); if (repository) named.set(dir, repository); } };
+  for (const { path: declaredRoot, repository: declaredRepository } of declared) {
     const dir = declaredRoot.replace(/\/+$/, '') || declaredRoot;
     const name = dir.split('/').pop() ?? '';
-    if (!/[*?[]/.test(name)) { add(dir); continue; }
+    if (!/[*?[]/.test(name)) { add(dir, declaredRepository); continue; }
     const parent = dirname(dir);
     // A `[` with no closing `]` is literal, as in a shell glob.
     const source = name.replace(/\[!/g, '[^').split(/(\[[^\]]+\])/).map((part, i) => i % 2 ? part
@@ -157,11 +164,11 @@ function estate(json) {
       try { return statSync(join(parent, entry)).isDirectory(); } catch { return false; }
     }).sort().map((entry) => join(parent, entry));
     if (members.length === 0) report.push({ root: dir, family: true, records: 0, unregistered: [] });
-    members.forEach(add);
+    members.forEach((member) => add(member, declaredRepository));
   }
   for (const dir of roots) {
     if (!existsSync(dir)) { report.push({ root: dir, missing: true, records: 0, unregistered: [] }); continue; }
-    const repository = existsSync(join(dir, '.git')) ? (resolve(dir) === resolve(root) && config.repository ? config.repository : repositoryOf(dir)) : null;
+    const repository = existsSync(join(dir, '.git')) ? (named.get(dir) ?? (resolve(dir) === resolve(root) && config.repository ? config.repository : repositoryOf(dir))) : null;
     let paths;
     if (repository) {
       paths = execFileSync('git', ['-C', dir, 'ls-files', '-z'], { encoding: 'utf8', maxBuffer: 1 << 28 }).split('\0').filter(Boolean).filter(isRecord);
