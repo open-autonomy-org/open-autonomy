@@ -126,6 +126,16 @@ door with the exact local kit and SDK artifacts. That installer owns candidate
 archive validation and registry-neutral integrity. Existing published-mode
 resolution stays with its existing package-manager door.
 
+An adopter may declare a native workspace beneath its project root rather than
+inside `.open-autonomy`: Supercode keeps its sole Twin checkout at
+`sources/twin`. The host installer trusts pnpm's declared workspace selection
+within that canonical project root and matches the package's exact authored
+name and version there. It does not require a duplicate checkout beneath the
+host directory or infer those dependencies from the machine's serving source
+graph. Fleet package names still require their selected complete machine graph.
+The shared installer owns this boundary for every adopter; no local resolver
+or compatibility package substitutes for pnpm's workspace selection.
+
 The company World's `world/voice.ts`, `world/room-call.mjs` and
 `world/owner.ts call` are rehearsal stories, not a user feature. Manager ruling
 268242 on VO-3843 removes their standalone voice runner, fabricated call-thread

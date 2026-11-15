@@ -103,9 +103,10 @@ export function machinePublishedBinding(environment: Record<string, string | und
 
 function nativeHostWorkspaces(directory: string, environment: Record<string, string | undefined>): Array<{ name: string; version: string; path: string }> {
   directory = realpathSync(directory);
+  const project = realpathSync(resolve(directory, '..'));
   const listed = spawnSyncWork(() => Bun.spawnSync(['pnpm', '--dir', directory, 'list', '-r', '--depth', '-1', '--json'], { env: environment }));
   if (listed.exitCode !== 0) throw new Error(`Cannot read native host source workspaces: ${listed.stderr.toString()}`);
-  return JSON.parse(listed.stdout.toString()).filter((pkg: any) => realpathSync(pkg.path).startsWith(directory + sep));
+  return JSON.parse(listed.stdout.toString()).filter((pkg: any) => realpathSync(pkg.path).startsWith(project + sep));
 }
 
 // pnpm owns dependency resolution. Only the file: packages declared inside the locked source tree need a different
@@ -116,7 +117,7 @@ function sourceLinks(options: Options): Array<{ name: string; target: string }> 
   const declarations = { ...manifest.devDependencies, ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.overrides };
   const workspace = Object.entries(declarations).filter(([, value]) => typeof value === 'string' && value.startsWith('workspace:'));
   // Host-owned source workspaces have their own Git pins. Let native pnpm
-  // select them only beneath this canonical host; the machine's Supercode
+  // select them only beneath this canonical project; the machine's Supercode
   // packages still require its complete graph, even if a local copy exists.
   const local = new Set<string>();
   if (workspace.length && existsSync(join(options.directory, 'pnpm-workspace.yaml'))) {
