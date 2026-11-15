@@ -110,3 +110,10 @@ difference to idle RSS (133.2 MiB against 131.3 MiB without it, inside run-to-ru
 plugins are already registered lazily by the base image, so the memory saving above comes from the packages and
 extras that are gone, not from the denylist. The denylist earns its place by keeping Hermes's own account of
 itself truthful, not by saving memory.
+
+The development Dockerfiles take two named source build contexts,
+`supercode-source` and `supercode-agent-source`, each at its reviewed commit.
+Fleet and Agent install and build their own native workspaces; Agent links the
+Fleet public packages from that one Fleet checkout. The host package retains only
+its channel and World dependencies. Both programs expose their own command and
+SDK selections in the image; no public release is needed for development.

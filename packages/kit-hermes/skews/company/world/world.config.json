@@ -60,32 +60,6 @@
       }
     },
     {
-      "id": "openai",
-      "type": "process",
-      "execution": {
-        "process": {
-          "command": "bash",
-          "args": [
-            "-lc",
-            "exec bun \"$WORLD_OPENAI_CLI\" serve --port \"$PORT\" --root \"$VOLTER_WORLD_DATA/openai\" --scenario \"$VO_REALTIME_HANDLERS\""
-          ],
-          "rootArg": false,
-          "portArg": false
-        }
-      },
-      "endpoint": {
-        "port": "auto",
-        "ready": {
-          "stdoutMatch": "openai twin at",
-          "timeoutMs": 120000,
-          "intervalMs": 500
-        }
-      },
-      "bindings": {
-        "injectEnv": "OPENAI_TWIN_URL"
-      }
-    },
-    {
       "id": "gateway",
       "type": "process",
       "execution": {
@@ -380,31 +354,6 @@
           "timeoutMs": 600000,
           "intervalMs": 1000
         }
-      }
-    },
-    {
-      "id": "voice",
-      "type": "process",
-      "execution": {
-        "process": {
-          "command": "bun",
-          "args": [
-            "${SCENARIO_DIR}/voice.ts"
-          ],
-          "rootArg": false,
-          "portArg": false
-        }
-      },
-      "endpoint": {
-        "port": "auto",
-        "ready": {
-          "stdoutMatch": "voice: the account manager",
-          "timeoutMs": 600000,
-          "intervalMs": 1000
-        }
-      },
-      "bindings": {
-        "injectEnv": "VO_VOICE_URL"
       }
     }
   ]

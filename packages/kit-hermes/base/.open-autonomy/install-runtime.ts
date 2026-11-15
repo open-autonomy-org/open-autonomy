@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 // Install the same version contract from npm, a review registry or exact npm-pack artifacts.
+import type { MachineSupercode } from './machine-supercode.ts';
 import { responseWork, spawnSyncWork, spawnWork } from './work-ledger.ts';
 import { sourceJson, sourceProgram, publishedProgram } from './source-program.ts';
 import { createHash } from 'node:crypto';
@@ -49,11 +50,6 @@ function selectedSource(file: string, environment: Record<string, string | undef
     && !(selected.serving_handover?.previous_receipt === path && same(selected.serving_handover.previous))
     && receipt.base_digest !== createHash('sha256').update(primary).digest('hex'))) throw new Error('candidate source no longer matches its primary');
   return candidate.lock;
-}
-
-export function machineSourceBinding(environment: Record<string, string | undefined> = process.env): any | null {
-  const file = sourceLock(environment);
-  return file ? selectedSource(file, environment) : null;
 }
 
 export function machineSourceReceipt(environment: Record<string, string | undefined>): string | null {
@@ -166,7 +162,7 @@ function sourceLinks(options: Options): Array<{ name: string; target: string }> 
   });
 }
 
-export function runtimeInstallIdentity(options: Pick<Options, 'directory' | 'registry' | 'archive'> & Partial<Pick<Options, 'environment'>>): string {
+export function runtimeInstallIdentity(options: Pick<Options, 'directory' | 'registry' | 'archive'> & Partial<Pick<Options, 'environment'>> & { coding?: MachineSupercode }): string {
   const hash = createHash('sha256').update('pnpm-hardlink-v1').update(readFileSync(join(options.directory, 'package.json')));
   const workspace = join(options.directory, 'pnpm-workspace.yaml');
   if (existsSync(workspace)) {
@@ -191,6 +187,19 @@ export function runtimeInstallIdentity(options: Pick<Options, 'directory' | 'reg
   }
   const published = machinePublishedBinding(options.environment ?? process.env);
   if (published) hash.update('retained-release-v3').update(readFileSync(published.receipt));
+  if (options.coding) {
+    const coding = options.coding;
+    hash.update('installed-coding-release-v1').update(JSON.stringify(coding));
+    for (const [root, entry] of [[resolve(dirname(coding.bin), '..'), coding.bin],
+      [resolve(dirname(coding.orchestratorEntry), '..'), coding.orchestratorEntry], [coding.harnessSdk, null]] as const) {
+      const manifestBytes = readFileSync(join(root, 'package.json'));
+      hash.update(manifestBytes);
+      if (entry) hash.update(readFileSync(entry));
+      const exported = JSON.parse(manifestBytes.toString()).exports?.['.'];
+      const module = typeof exported === 'string' ? exported : exported?.import ?? exported?.default;
+      if (typeof module === 'string') hash.update(readFileSync(resolve(root, module)));
+    }
+  }
   for (const path of archivePaths(options.archive)) hash.update(readFileSync(path));
   return hash.digest('hex');
 }

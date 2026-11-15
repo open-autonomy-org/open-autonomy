@@ -9,7 +9,7 @@
 //   applyAgent({...})           per profile: adopt the jobs a home already has (the seed hook's, once),
 //                               provision a new home, then apply; returns the lines the start logs
 //   agentHarness(setup)         the harness the owner picks: `hermes` (the default) runs itself; any other runs as
-//                               Volter Harness's orchestrator's worker on the same home (ADR 0007, as amended)
+//                               Supercode Agent's orchestrator worker on the same home (ADR 0007, as amended)
 //   renderWorkerForms(from, to) that target's content: the persona and skills in the workers' forms
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, relative, resolve } from 'node:path';
@@ -153,9 +153,9 @@ export async function applyAgent(options: {
     return applyNative({ ...options, root: options.runtime.root });
   }
   // the machine's orchestrator (machine-supercode.ts)
-  const { orchestratorModule } = await import('./machine-supercode.ts');
-  const applier = await import(orchestratorModule('./apply'));
-  const doors = await import(orchestratorModule('./apply/doors'));
+  const { codingOrchestratorModule } = await import('./machine-supercode.ts');
+  const applier = await import(codingOrchestratorModule('./apply'));
+  const doors = await import(codingOrchestratorModule('./apply/doors'));
   const lines: string[] = [];
   const harness = agentHarness(options.setup);
   for (const [profile, declared] of Object.entries(options.setup.profiles)) {

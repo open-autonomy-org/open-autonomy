@@ -4,9 +4,9 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
-import { harnessSdkModule, supercodeCommand } from './machine-supercode.ts';
-// the machine's harness SDK (machine-supercode.ts)
-const { SupercodeHarnessClient: HarnessClient } = await import(harnessSdkModule());
+import { codingSdkModule, codingCommand } from './machine-supercode.ts';
+// the installed Agent SDK (machine-supercode.ts)
+const { SupercodeHarnessClient: HarnessClient } = await import(codingSdkModule());
 import { PublicationStore, acquirePublicationLease, acquireAttestedPublicationLease, releaseAbandonedPublicationLease, retainedDigest, publicationHash, savePublicationBytes, savePublicationFile, sourceJournalOpen, stateJournalOpen, type NativeRuntimeSelection, type LocalPublicationLease, type LeaseHandoffAcknowledgement } from './publication.ts';
 import { NativeRuntime } from './native-runtime.ts';
 import { OwnerControlState, validateRecoveryControlSnapshot, effectDigest, type ControlScope, type ControlDataV3, type ControlSelection, type ControlReconciliationAudit, type ControlRecoveryAction, type ControlRecoveryEvidence } from './owner-control.ts';
@@ -147,7 +147,7 @@ async function controlDoor(configFile: string, stateFile: string, scope: Control
   const initialConfigDigest = retainedDigest(configFile), initialControlDigest = retained.controlDigest;
   const selected = scope.nativeRuntime as NativeRuntimeSelection;
   // Its own names: the door's argv (`args`) is read above, and a shadowing `const args` here throws before the door runs.
-  const [serveBin, ...serveArgs] = supercodeCommand(['harness', 'serve']);
+  const [serveBin, ...serveArgs] = codingCommand(['harness', 'serve']);
   const sc = new HarnessClient({ command: serveBin, args: serveArgs, startTimeoutMs: 10_000, requestTimeoutMs: 10_000, env: { ...process.env, ...(selected.kind === 'hermes' ? { HERMES_HOME: selected.root } : {}) } as Record<string, string> }); // the orchestrator home is the runtime's root, never SUPERCODE_HOME
   const runtime = new NativeRuntime(selected, sc), abort = new AbortController();
   let closeWork: Promise<void> | undefined;

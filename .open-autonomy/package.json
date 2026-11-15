@@ -2,11 +2,8 @@
   "name": "open-autonomy-host",
   "private": true,
   "type": "module",
-  "description": "The project's runtime dependencies: Volter Harness, its harness SDK for native agent state and its applier (the orchestrator package) for the agent's setup, the Chat SDK and its Discord adapter for the orchestrator's channels, and World tooling for isolated application verification. The Open Autonomy SDK (the interface) is vendored beside them under sdk/; the host tools (the valve, the credential handoff, the Codex connection, the Volter Harness adapter) are the kit's own files here.",
+  "description": "The project's channel and World dependencies. Fleet and Agent are separate installed machine programs, selected through their public installed SDKs in machine-supercode.ts. The Open Autonomy SDK is vendored beside these host tools under sdk/.",
   "dependencies": {
-    "@volter/supercode": "workspace:0.0.0-source",
-    "@volter/supercode-harness-sdk": "workspace:0.3.109",
-    "@volter/supercode-orchestrator": "workspace:0.5.211",
     "chat": "4.39.0",
     "@chat-adapter/discord": "4.39.0",
     "@chat-adapter/state-memory": "4.39.0",

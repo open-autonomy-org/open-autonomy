@@ -7,10 +7,13 @@
 //   bun world/owner.ts inbox
 //   bun world/owner.ts jobs | run <profile | job id>
 //   bun world/owner.ts dm <text>          (the account manager's DM in its account Room, RFC 0020 row 22)
-const { SupercodeHarnessClient } = await import(process.env.VO_SUPERCODE_SDK!);
-const client = new SupercodeHarnessClient({ command: process.env.VO_SUPERCODE_BIN ?? 'supercode' });
-const fromName = 'owner';
+import { createRequire } from 'node:module';
+
 const [verb, ...args] = process.argv.slice(2);
+const coding = verb === 'jobs' || verb === 'run';
+const { SupercodeHarnessClient } = await import(coding ? process.env.VO_CODING_SDK! : process.env.VO_SUPERCODE_SDK!);
+const client = new SupercodeHarnessClient({ command: coding ? process.env.VO_CODING_BIN : process.env.VO_SUPERCODE_BIN });
+const fromName = 'owner';
 try {
   if (verb === 'send') {
     const re = args.indexOf('--re');
@@ -27,24 +30,6 @@ try {
       const from = typeof e.from === 'string' ? e.from : `sc:${e.from?.machine}:${e.from?.harness}:${e.from?.session_id}`;
       console.log(`${e.id}  thread ${e.thread ?? '-'}  re ${e.in_reply_to ?? '-'}  from ${from}\n    ${String(e.body).replace(/\n/g, '\n    ')}`);
     }
-  } else if (verb === 'call') {
-    // A call, through the voice front's own door (the voice pack's agentCall: RFC 0020 decision 21), without the audio:
-    // the call's start is filed as a root to the agent, and the session that takes its thread is the one the voice
-    // speaks for; when the call ends, its captions are filed in that thread, with main CC.
-    const { agentCall } = await import(`${process.env.VO_SUPERCODE_TREE}/sdk/voice/mailbox.mjs`);
-    const machine = (await import('./lib.ts')).MACHINE;
-    const ended = new AbortController();
-    const call = agentCall({ agent: `sc:${machine}:agent:${args[0] ?? 'account-manager'}`, name: 'Voice', local: true, env: process.env, signal: ended.signal, timeoutMs: 180_000 });
-    const session = await call.open({ name: 'the account Room' });
-    console.log(`the voice speaks for ${session}`);
-    // The call stays open this long (seconds) before it ends, so other threads can answer meanwhile (row 17).
-    await new Promise((done) => setTimeout(done, Number(args[1] ?? 0) * 1000));
-    await call.captions(session, [
-      { at: new Date().toISOString(), speaker: 'Aaron', text: 'Let us walk through the export design on this call.' },
-      { at: new Date().toISOString(), speaker: 'Voice', text: 'CSV first, then the API.' },
-    ]);
-    console.log('captions filed in the call thread');
-    ended.abort();
   } else if (verb === 'dm') {
     // The account manager's DM in its account Room, as RH2's console opens it: RH2 signs the owner a control token for
     // the session bound to the agent's seat, and the line goes to that session on the Teams server's session channel.
@@ -56,7 +41,7 @@ try {
     };
     const room = (await door('/rooms')).rooms.find((r: { key?: string }) => r.key === 'account');
     const { token, binding } = await door(`/rooms/${room.roomId}/agents/${agent}/session/token`, { scope: 'control' });
-    const { openBrowserSession, sendBrowserTurn } = await import(`${process.env.VO_SUPERCODE_TREE}/sdk/volter-teams/browser-channel.mjs`);
+    const { openBrowserSession, sendBrowserTurn } = await import(createRequire(process.env.VO_SUPERCODE_BIN!).resolve('@volter/teams/browser-channel'));
     const channel = await openBrowserSession({ origin: process.env.TEAMS_URL!, teamId: binding.team, sessionId: binding.sessionId, token });
     console.log(`dm → session ${binding.sessionId} (${binding.harness})`);
     console.log(JSON.stringify(await sendBrowserTurn(channel, args.join(' '))));
@@ -77,7 +62,7 @@ try {
       console.log(JSON.stringify(await client.runJob({ ...scheduler, id: job.id, ...(job.profile ? { profile: job.profile } : {}) }), null, 2));
     }
   } else {
-    console.log('bun world/owner.ts send <agent|address> <text> [--re <id>] | inbox | jobs | run <profile | job id> | call [agent] [open seconds]');
+    console.log('bun world/owner.ts send <agent|address> <text> [--re <id>] | inbox | jobs | run <profile | job id> | dm <text>');
     process.exitCode = 2;
   }
 } finally {

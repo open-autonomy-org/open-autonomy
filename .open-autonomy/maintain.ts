@@ -1,6 +1,9 @@
 #!/usr/bin/env bun
-// The PM's bounded maintenance: inspect releases, land a kit upgrade, request a drained restart, and put a ready
-// release on the Release pull request. Never deploys, tags or publishes.
+// The PM's maintenance: inspect releases, land a kit upgrade, request a drained restart, and put a ready
+// release on the Release pull request. Never deploys, tags or publishes. `restart` is the install's deployer pass, run
+// on a schedule by whoever runs the install (SETUP.md, "Keep the install on main": a launchd or cron job every ten
+// minutes, a project's keep job, a PM's pass): it moves a running install onto main (the keeper performs the restart it
+// asks for and never fetches main itself), and once the stack runs a revision it has not enrolled, runs enroll.ts.
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
@@ -24,6 +27,7 @@ os.execvpe(sys.argv[1], sys.argv[1:], os.environ)`;
 // pnpm uses the same registry twin as the World package door. Point pnpm at that registry
 // npm queried so the rehearsal release, rather than a cached public package, is applied.
 const packageEnv = process.env.NPM_REGISTRY_TWIN_URL ? { ...process.env, PNPM_CONFIG_REGISTRY: process.env.NPM_REGISTRY_TWIN_URL } : process.env;
+// Native commands finish on their actual result, never an elapsed allowance.
 const packageCommand = (cmd: string[]): string[] => cmd[0] === 'pnpm' && process.env.NPM_REGISTRY_TWIN_URL
   ? [cmd[0], `--registry=${process.env.NPM_REGISTRY_TWIN_URL}`, ...cmd.slice(1)] : cmd;
 const run = (cmd: string[], cwd = project, env = cmd[0] === 'pnpm' ? packageEnv : process.env): string => {

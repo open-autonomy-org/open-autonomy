@@ -38,14 +38,14 @@
 //               host — the home's .env names them (OPEN_AUTONOMY_BASE_URL, OPEN_AUTONOMY_PAY_URL) and the word `valve`
 //   reporter    keyless, publishing through the valve; native waits for its owned gateway's public ready event
 //   gateway     `hermes gateway run` in the checkout, HERMES_HOME=<home>; or, where .open-autonomy/agent.json picks
-//               another harness (`"harness": "codex"`), Volter Harness's orchestrator on the same home, running that
+//               another harness (`"harness": "codex"`), Supercode Agent's orchestrator on the same home, running that
 //               harness as each profile's worker (ADR 0007, as amended)
 //   board       the board's dispatcher (`workflow serve`), where the home declares workflow.yaml (ADR 0017)
 //   channel     one per mail agent's Slack or Jira channel, carrying it to the agent's mailbox
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import { initializeWorkLedger, closeWorkLedger, startWork, measureWork, spawnSyncWork, spawnWork, stopWorkChild } from '../base/.open-autonomy/work-ledger.ts';
 import type { Setup } from '../base/.open-autonomy/agent.ts';
-import { machineSupercode, machineNode } from '../base/.open-autonomy/machine-supercode.ts';
+import { machineSupercode, machineCodingProgram, machineNode } from '../base/.open-autonomy/machine-supercode.ts';
 import { serveInstallOwner } from './install-owner.ts';
 import { acquireBoard, boardDeclaration, boardOwnerAnswers, retainedBoard } from './retained-board.ts';
 import { readInstall } from '../base/.open-autonomy/prepare-install.ts';
@@ -60,7 +60,7 @@ import { basename, dirname, relative, resolve } from 'node:path';
 if (Bun.main === import.meta.path) { console.error('start: the keeper runs through a project\'s .open-autonomy/start.ts, not on its own. Nothing was started.'); process.exit(1); }
 const host = dirname(Bun.main);
 // The kit's modules the keeper calls are the host's copies, rendered beside the entry: their own imports (the applier
-// in @volter/supercode-orchestrator) resolve from the host's node_modules, wherever the kit package itself is installed.
+// in @volter/supercode-agent-orchestrator) resolve from the host's node_modules, wherever the kit package itself is installed.
 const { codexAccess }: typeof import('../base/.open-autonomy/codex-auth.ts') = await import(resolve(host, 'codex-auth.ts'));
 const { installHostRuntime, runtimeInstallIdentity }: typeof import('../base/.open-autonomy/install-runtime.ts') = await import(resolve(host, 'install-runtime.ts'));
 const { agentHarness, agentModels, parseAgent, profileHarness, readAgent, renderWorkerForms }: typeof import('../base/.open-autonomy/agent.ts') = await import(resolve(host, 'agent.ts'));
@@ -174,7 +174,7 @@ const agentEnv = (): Record<string, string> => ({ ...inherited(), AGENT_SECRETS:
 
 const children: Array<{ name: string; proc: ReturnType<typeof Bun.spawn> }> = [];
 // The one-shot commands the start waits on (a fetch, a clone, the host's dependency install), so a signal reaches them too.
-const helpers = new Set<ReturnType<typeof Bun.spawn>>();
+const helpers = new Map<ReturnType<typeof Bun.spawn>, Promise<unknown>>();
 // Set by a termination signal (or a service ending): from then on this start begins nothing — no service, no restart,
 // no command — and only waits for what it already started to exit.
 let ending = false;
@@ -189,10 +189,10 @@ const publishKit = (value: Record<string, unknown>) => {
 };
 let kitServed = false;
 const publishReady = () => { if (stackConfigured && nativeGatewayReady) { kitServed = true; publishKit({ ready: true }); } };
-publishKit({ progress: 'starting', deadline_ms: Date.now() + 8000 });
+publishKit({ progress: 'starting' });
 let restartAsked = false;
 process.on('exit', () => {
-  for (const proc of [...children.map((c) => c.proc), ...helpers]) { try { stopWorkChild(proc, () => proc.kill(), { signal: 'SIGTERM' }); } catch { /* already gone */ } }
+  for (const proc of [...children.map((c) => c.proc), ...helpers.keys()]) { try { stopWorkChild(proc, () => proc.kill(), { signal: 'SIGTERM' }); } catch { /* already gone */ } }
 });
 function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<string, string>; asAgent?: boolean; stdout?: 'pipe'; allowRestart?: () => boolean; stoppedExitCodes?: readonly number[] }) {
   if (ending) throw new Error(`start: ${name} not started: the stack is stopping`);
@@ -218,8 +218,8 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
     }
     ending = true;
     say(`${name} ended (${code}); stopping the rest`);
-    for (const c of children) if (c.proc !== proc) stopWorkChild(c.proc, () => c.proc.kill(), { signal: 'SIGTERM' });
-    await Promise.all(children.map((c) => c.proc.exited));
+    for (const child of [...children.map(c => c.proc), ...helpers.keys()]) if (child !== proc && child.exitCode === null && child.signalCode === null) stopWorkChild(child, () => child.kill(), { signal: 'SIGTERM' });
+    await Promise.all([...children.map(c => c.proc.exited), ...helpers.values()]);
     // the runtime drained on request (Hermes exits 75; the orchestrator, told to stop, exits 0): restart onto main
     await closeWorkLedger(); process.exit(name === 'gateway' && (code === 75 || (restartAsked && code === 0)) ? 75 : 1);
   });
@@ -233,33 +233,31 @@ for (const sig of stopSignals) process.on(sig, async () => {
   if (ending) return;
   ending = true;
   say(`${sig}: stopping ${children.length} service(s)${helpers.size ? ` and ${helpers.size} command(s) in flight` : ''}; nothing new starts`);
-  const live = [...children.map((c) => c.proc), ...helpers];
-  for (const proc of live) stopWorkChild(proc, () => proc.kill(constants.signals.SIGTERM), { signal: constants.signals.SIGTERM });
-  const bound = new Promise<void>((done) => setTimeout(done, 15_000));
-  await Promise.race([Promise.all(live.map((proc) => proc.exited)), bound]);
-  for (const proc of live) if (proc.exitCode === null && proc.signalCode === null) stopWorkChild(proc, () => proc.kill('SIGKILL'), { signal: 'SIGKILL' });
+  const live = [...children.map((c) => c.proc), ...helpers.keys()];
+  for (const proc of live) if (proc.exitCode === null && proc.signalCode === null) stopWorkChild(proc, () => proc.kill(constants.signals.SIGTERM), { signal: constants.signals.SIGTERM });
+  await Promise.all([...live.map(proc => proc.exited), ...helpers.values()]);
   await closeWorkLedger(); process.exit(0);
 });
 // The startup's await points: once a signal has arrived, the start goes no further (the handler above exits the process
 // when what it already started has exited). Startup code between two awaits runs whole, so these are the only places a
 // signal can have arrived since the last check.
 const halted = (): Promise<void> => (ending ? new Promise<never>(() => {}) : Promise.resolve());
-// A one-shot command the start waits on without blocking the event loop (Bun.spawnSync would hold every signal handler
-// until it returned), tracked so a signal reaches it, and bounded: a command that reaches the network (a fetch, a clone,
-// an agent holding a key) and hangs is stopped at its bound and reads as failed, so the start never waits forever.
-async function command(cmd: string[], opts: { cwd: string; env: Record<string, string>; boundMs: number }): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
+// One-shot commands stay owned until their process exits and both output streams finish. A stop signal reaches the
+// same helpers through the stack's shutdown; startup never starts the next phase while a command remains pending.
+async function command(cmd: string[], opts: { cwd: string; env: Record<string, string> }): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
   await halted();
   const proc = spawnWork(() => Bun.spawn({ cmd, cwd: opts.cwd, env: opts.env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' }));
-  helpers.add(proc);
-  publishKit({ progress: 'kit-command', command: cmd[0], work_pid: proc.pid, deadline_ms: Date.now() + opts.boundMs + 5000 });
-  let overran = false;
-  const bound = setTimeout(() => { overran = true; stopWorkChild(proc, () => proc.kill(constants.signals.SIGTERM), { signal: constants.signals.SIGTERM }); setTimeout(() => stopWorkChild(proc, () => proc.kill('SIGKILL'), { signal: 'SIGKILL' }), 5000).unref(); }, opts.boundMs);
-  const [stdout, stderr, exitCode] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
-  clearTimeout(bound);
-  helpers.delete(proc);
-  publishKit({ progress: 'starting', deadline_ms: Date.now() + 8000 });
-  await halted();
-  return overran ? { exitCode: null, stdout, stderr: `${stderr}${stderr && !stderr.endsWith('\n') ? '\n' : ''}${cmd.join(' ')}: no answer within ${opts.boundMs / 1000} s` } : { exitCode, stdout, stderr };
+  const completed = Promise.allSettled([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+  helpers.set(proc, completed);
+  publishKit({ progress: 'kit-command', command: cmd[0], work_pid: proc.pid });
+  try {
+    const results = await completed;
+    for (const result of results) if (result.status === 'rejected') throw result.reason;
+    const [stdout, stderr, exitCode] = results.map(result => (result as PromiseFulfilledResult<string | number | null>).value) as [string, string, number | null];
+    publishKit({ progress: 'starting' });
+    await halted();
+    return { exitCode, stdout, stderr };
+  } finally { helpers.delete(proc); }
 }
 
 mkdirSync(home, { recursive: true });
@@ -273,8 +271,8 @@ const deployKey = resolve(secrets, 'deploy_key');
 if (existsSync(deployKey)) {
   rmSync(sock, { force: true });
   spawn('ssh-agent', ['ssh-agent', '-D', '-a', sock], { asAgent: true, cwd: home });
-  const t0 = Date.now(); while (!existsSync(sock) && Date.now() - t0 < 5000) { await Bun.sleep(50); await halted(); }
-  const add = await command(['ssh-add', '-q', deployKey], { cwd: home, env: { ...inherited(), SSH_AUTH_SOCK: sock }, boundMs: 30_000 });
+  while (!existsSync(sock)) { await Bun.sleep(50); await halted(); }
+  const add = await command(['ssh-add', '-q', deployKey], { cwd: home, env: { ...inherited(), SSH_AUTH_SOCK: sock } });
   if (add.exitCode !== 0) { console.error(`start: ssh-add ${deployKey}: ${add.stderr.trim()}`); process.exit(1); }
   say(`ssh-agent holds the deploy key at ${sock}`);
 } else say(`no ${deployKey}: pushes use your own git and keys`);
@@ -286,7 +284,7 @@ else {
 if (!existsSync(resolve(project, '.git'))) {
   if (!origin) { console.error(`start: ${project} is not a checkout and no --origin to clone`); process.exit(1); }
   mkdirSync(project, { recursive: true }); own(project);
-  const clone = await command(drop(['git', 'clone', '-q', origin, project]), { cwd: home, env: agentEnv(), boundMs: 600_000 });
+  const clone = await command(drop(['git', 'clone', '-q', origin, project]), { cwd: home, env: agentEnv() });
   if (clone.exitCode !== 0) { console.error(`start: cannot clone ${origin}: ${clone.stderr.trim()}`); process.exit(1); }
   say(`cloned ${origin} → ${project}`);
 } else {
@@ -298,7 +296,7 @@ if (!existsSync(resolve(project, '.git'))) {
   // Untracked files (a task's worktree directory, a scratch note) survive a move of the checkout; only tracked
   // changes are a killed attempt's work.
   const status = git('status', '--porcelain', '--untracked-files=no');
-  const fetched = status.exitCode === 0 ? await command(drop(['git', 'fetch', '-q', 'origin']), { cwd: project, env: agentEnv(), boundMs: 120_000 }) : undefined;
+  const fetched = status.exitCode === 0 ? await command(drop(['git', 'fetch', '-q', 'origin']), { cwd: project, env: agentEnv() }) : undefined;
   if (!fetched || fetched.exitCode !== 0) { console.error(`start: cannot inspect and fetch the committed configuration:\n${fetched?.stderr.trim() || status.stderr.toString().trim() || 'git did not answer'}\nStartup stopped, retry when Git access is restored`); process.exit(1); }
   if (status.stdout.toString().trim()) {
     // The working tree is a killed attempt's; what the agent IS still comes from main: its hermes/ is taken from
@@ -320,6 +318,9 @@ if (!existsSync(resolve(project, '.git'))) {
 
 }
 
+const codingMachine = machineCodingProgram(agentEnv(), prepared?.coding);
+process.env.SUPERCODE_CODING_BIN = codingMachine.bin;
+
 // Fetching can replace the entry, and a changed package.json installs another kit release, so another keeper. Load
 // the landed code before claiming its version is running, rather than continuing the previous one with a new record.
 const reload = async () => {
@@ -340,7 +341,7 @@ if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loaded
   const committed = (file: string) => spawnSyncWork(() => Bun.spawnSync({ cmd: drop(['git', 'ls-files', '--error-unmatch', relative(project, file)]), cwd: project, env: agentEnv(), stdout: 'ignore', stderr: 'ignore' })).exitCode === 0;
   const lock = ['pnpm-lock.yaml'].map((file) => resolve(host, file)).find((file) => existsSync(file) && committed(file));
   const stamp = resolve(host, 'node_modules', '.open-autonomy-install');
-  const runtimeOptions = { directory: host, environment: agentEnv(), registry: prepared?.registry ?? arg('--runtime-registry'), archive: prepared?.archive ?? arg('--runtime-package') };
+  const runtimeOptions = { directory: host, environment: agentEnv(), registry: prepared?.registry ?? arg('--runtime-registry'), archive: prepared?.archive ?? arg('--runtime-package'), coding: prepared ? prepared.coding : codingMachine };
   const want = runtimeInstallIdentity(runtimeOptions);
   if (prepared && (want !== prepared.runtimeIdentity || (existsSync(stamp) ? readFileSync(stamp, 'utf8').trim() : '') !== want)) {
     throw new Error('prepared runtime identity changed; prepare a new install before activation');
@@ -350,7 +351,7 @@ if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loaded
     let install: ReturnType<typeof Bun.spawn> | undefined;
     rmSync(stamp, { force: true });
     try {
-      await installHostRuntime({ ...runtimeOptions, command: drop, frozen: !!lock, started: (child) => { install = child; helpers.add(child); } });
+      await installHostRuntime({ ...runtimeOptions, command: drop, frozen: !!lock, started: (child) => { install = child; helpers.set(child, child.exited); } });
     } catch (error) {
       await halted();
       throw new Error(`${(error as Error).message}. Resolve the adopter's exact host manifest before activation: run bun .open-autonomy/install-runtime.ts --update-lock from the project inside its World, review/commit .open-autonomy/pnpm-lock.yaml, then retry. Startup does not unfreeze a committed lock.`);
@@ -409,6 +410,7 @@ const machine = (() => {
 Object.assign(process.env, { OPEN_AUTONOMY_SUPERCODE_BIN: machine.bin, OPEN_AUTONOMY_ORCHESTRATOR_BIN: machine.orchestratorEntry, OPEN_AUTONOMY_HARNESS_SDK: machine.harnessSdk });
 const supercodeBin = machine.bin;
 const orchestratorBin = machine.orchestratorEntry;
+const codingOrchestratorBin = codingMachine.orchestratorEntry;
 // Claude Code runs on a model the valve reaches: every profile's default model names its endpoint (the platform's rail),
 // so no worker silently falls back to a login nobody chose. A bare start as the host's own user (no --as) may instead
 // declare the harness's own login on a profile (`credential: "harness-login"`): every process here already runs as that
@@ -555,8 +557,7 @@ spawn('valve', ['bun', resolve(host, 'valve.ts'), '--loopback', ...keys], { env:
 
 // 5. The reporter and the gateway, as the agent.
 const env = agentEnv();
-// The machine's builds, unless the environment names others: a review or a World runs an unreleased branch's build of
-// supercode and its orchestrator (OPEN_AUTONOMY_SUPERCODE_BIN, OPEN_AUTONOMY_ORCHESTRATOR_BIN) on the same start.
+// The selected Fleet release owns workflow callers on this home; Agent owns its coding gateway.
 // The orchestrator that serves this home, and the supercode it drives, are named in the home (orchestrator.json) when
 // they are put in place, before any dispatcher: supercode's \`workflow\` on this home (a shell, the connector's board
 // follower, the board door) runs that orchestrator driving that supercode, the ones the machine has installed (D215,
@@ -569,9 +570,8 @@ const env = agentEnv();
     return { entry, version };
   };
   const orchestrator = named(orchestratorBin), record = resolve(home, 'orchestrator.json');
-  // Named before native setup: setup's job writes hand off through this record, which must name the selection this
-  // kit runs under. A prepared native install (the only start that reports readiness) that ends before it ever served
-  // puts back the record it found, so a predecessor started again (a refused candidate's rollback) meets its own.
+  // Workflow callers use this Fleet record. Agent setup and gateway calls use the prepared coding selection.
+  // A prepared install that ends before serving puts back the record it found, so a predecessor started again (a refused candidate's rollback) meets its own.
   const found = existsSync(record) ? readFileSync(record) : null;
   writeFileSync(record, `${JSON.stringify({ package: '@volter/supercode-orchestrator', version: orchestrator.version, entry: orchestrator.entry, supercode: named(supercodeBin) })}\n`);
   if (prepared && onNative) process.on('exit', () => { if (!kitServed) { if (found) writeFileSync(record, found); else rmSync(record, { force: true }); } });
@@ -587,7 +587,7 @@ const env = agentEnv();
   const applier = `const r = JSON.parse(process.argv[1]); const { applyAgent } = await import(r.agent); const { resolve } = await import('node:path');
 const lines = await applyAgent({ setup: r.setup, runtime: r.runtime, homeOf: (p) => (p === 'default' ? r.home : resolve(r.home, 'profiles', p)), homeId: r.homeId, stateRoot: r.stateRoot, workspace: r.workspace, asAgent: r.asAgent });
 process.stdout.write('\\n' + JSON.stringify(lines) + '\\n');`;
-  const applied = await command(['bun', '-e', applier, request], { cwd: project, env: { ...process.env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } as Record<string, string>, boundMs: 600_000 });
+  const applied = await command(['bun', '-e', applier, request], { cwd: project, env: { ...process.env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } as Record<string, string> });
   // the applier's own error and its stack, not only its last line (Bun ends a crash's stderr with its version banner)
   say(`native setup ${Math.round(performance.now() - setupStarted)} ms (public observation, declaration validation and reconciliation before board ownership)`);
   if (applied.exitCode !== 0) { console.error(`start: the agent's setup could not be applied (exit ${applied.exitCode}):\n${applied.stderr.trim() || applied.stdout.trim() || 'the setup child returned no diagnostic'}\nNo gateway was started.`); process.exit(1); }
@@ -619,10 +619,10 @@ if (typeof boardSetup?.document === 'string' && onNative && existsSync(resolve(h
     if (!from) stopStart(`the board's checkout ${checkout} cannot be made: ${project} names no origin`);
     // Something already at the checkout's path that is not a checkout is never this start's to remove.
     if (existsSync(checkout)) stopStart(`the board's checkout ${checkout} cannot be made: ${checkout} is there and is not a checkout of ${from}`);
-    const clone = await command(drop(['git', 'clone', '-q', '--branch', 'main', from, checkout]), { cwd: dirname(checkout), env: agentEnv(), boundMs: 600_000 });
+    const clone = await command(drop(['git', 'clone', '-q', '--branch', 'main', from, checkout]), { cwd: dirname(checkout), env: agentEnv() });
     if (clone.exitCode !== 0) {
       rmSync(checkout, { recursive: true, force: true }); // what this start's own clone left
-      stopStart(`the board's checkout ${checkout} cannot be made:\n${clone.stderr.trim() || 'the clone ran past its bound'}`);
+      stopStart(`the board's checkout ${checkout} cannot be made:\n${clone.stderr.trim() || `git clone exited ${clone.exitCode}`}`);
     }
     say(`board: cloned ${from} on main → ${checkout}`);
   }
@@ -650,9 +650,9 @@ if (typeof boardSetup?.document === 'string' && onNative && existsSync(resolve(h
     // A board this home already has is reopened by its native owner, never by `workflow init`: only the owner admits a
     // reader for what its cards hold (a backlog, a bounded pause), and an init run beside no owner refuses them, so a
     // home whose owner ended without a handover (the machine restarted) could never start again.
-    publishKit({ progress: 'kit-command', command: 'native-board-start', deadline_ms: Date.now() + 125000 });
+    publishKit({ progress: 'kit-command', command: 'native-board-start' });
     await acquireBoard(boardOptions);
-    publishKit({ progress: 'starting', deadline_ms: Date.now() + 8000 });
+    publishKit({ progress: 'starting' });
     await declared('reopened');
   } else {
   const init = spawnSyncWork(() => Bun.spawnSync({ cmd: drop([machineNode(), orchestratorBin, 'workflow', 'init', '--root', home, ...declares, '--json']),
@@ -705,15 +705,15 @@ const boardDeclared = onNative && existsSync(resolve(home, 'workflow.yaml'));
 // dispatcher is the `workflow serve` below; the orchestrator runs no round (supercode's orchestrator §2.9).
 const gateway = !onNative
   ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, stoppedExitCodes: [75], env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
-  : spawn('gateway', [machineNode(), orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe' });
+  : spawn('gateway', [machineNode(), codingOrchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe' });
 if (onNative) {
   gateway.exited.then(() => { nativeGatewayReady = false; });
   void nativeReadiness().catch(error => { nativeGatewayReady = false; if (!ending) say(`publication pending: native gateway readiness refused (${(error as Error).message})`); });
 }
 if (boardDeclared && prepared) {
-  publishKit({ progress: 'kit-command', command: 'native-board-start', deadline_ms: Date.now() + 125000 });
+  publishKit({ progress: 'kit-command', command: 'native-board-start' });
   await acquireBoard(boardOptions);
-  publishKit({ progress: 'starting', deadline_ms: Date.now() + 8000 });
+  publishKit({ progress: 'starting' });
 }
 else if (boardDeclared) spawn('board', [machineNode(), orchestratorBin, 'workflow', 'serve', '--root', home], { asAgent: true, env: boardOptions.env });
 // The public CLI may re-exec one direct daemon child as hermes-gateway. Bind
@@ -725,7 +725,7 @@ async function nativeReadiness(): Promise<void> {
   const owned = async (pid: number): Promise<boolean> => {
     if (ending || gateway.exitCode !== null || !Number.isSafeInteger(pid) || pid <= 0) return false;
     if (!['darwin', 'linux'].includes(process.platform)) return false;
-    const observed = await command(['/bin/ps', '-p', String(pid), '-o', 'ppid='], { cwd: project, env: inherited(), boundMs: 2000 });
+    const observed = await command(['/bin/ps', '-p', String(pid), '-o', 'ppid='], { cwd: project, env: inherited() });
     if (ending || gateway.exitCode !== null || observed.exitCode !== 0 || !/^\s*\d+\s*$/.test(observed.stdout)) return false;
     const parent = Number(observed.stdout.trim());
     return pid === gateway.pid ? parent === process.pid : parent === gateway.pid;
@@ -779,7 +779,7 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
     const creds = custodyEnv(resolve(secrets, 'slack.env'));
     const channels = slack.channels?.length ? slack.channels : (creds.SLACK_CHANNELS ?? '').split(',').map((c) => c.trim()).filter(Boolean);
     if (!creds.SLACK_BOT_TOKEN || !creds.SLACK_APP_TOKEN || !channels.length) say(`channel ${name} slack: ${resolve(secrets, 'slack.env')} needs SLACK_BOT_TOKEN, SLACK_APP_TOKEN and the channels (agent.json or SLACK_CHANNELS); not carried`);
-    else spawn(`channel ${name} slack`, [machineNode(), orchestratorBin, 'agent-channel', '--agent', name, '--platform', 'slack', '--slack-channel', channels.join(','),
+    else spawn(`channel ${name} slack`, [machineNode(), codingOrchestratorBin, 'agent-channel', '--agent', name, '--platform', 'slack', '--slack-channel', channels.join(','),
       '--state', resolve(home, '..', 'channels', `${name}.slack.json`)], { env: { ...env, SLACK_BOT_TOKEN: creds.SLACK_BOT_TOKEN, SLACK_APP_TOKEN: creds.SLACK_APP_TOKEN, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
   }
   const jira = mailAgent.channel?.jira;
@@ -787,7 +787,7 @@ for (const [name, mailAgent] of Object.entries(agentSetup.agents ?? {})) {
     const creds = custodyEnv(resolve(secrets, 'jira.env'));
     const auth: Record<string, string> | undefined = creds.JIRA_TOKEN ? { JIRA_TOKEN: creds.JIRA_TOKEN } : creds.JIRA_EMAIL && creds.JIRA_API_TOKEN ? { JIRA_EMAIL: creds.JIRA_EMAIL, JIRA_API_TOKEN: creds.JIRA_API_TOKEN } : undefined;
     if (!jira.site || !jira.jql || !auth) say(`channel ${name} jira: agent.json needs its site and jql, and ${resolve(secrets, 'jira.env')} its credential; not carried`);
-    else spawn(`channel ${name} jira`, [machineNode(), orchestratorBin, 'agent-channel', '--agent', name, '--platform', 'jira', '--site', jira.site, '--jql', jira.jql,
+    else spawn(`channel ${name} jira`, [machineNode(), codingOrchestratorBin, 'agent-channel', '--agent', name, '--platform', 'jira', '--site', jira.site, '--jql', jira.jql,
       '--state', resolve(home, '..', 'channels', `${name}.jira.json`)], { env: { ...env, ...auth, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
   }
 }

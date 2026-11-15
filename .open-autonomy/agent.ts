@@ -1,5 +1,5 @@
 // The project's agent setup (docs/decisions/0007): `.open-autonomy/agent.json` declares each profile's
-// Inference, jobs and Hermes-only settings; Volter Harness's applier renders them into the Hermes home before
+// Inference, jobs and Hermes-only settings; Supercode Agent's applier renders them into the Hermes home before
 // the gateway starts, through Hermes's own functions, owning each record by its Hermes id against a base
 // kept beside the home. Content (the persona, skills, plugins, scripts) is copied from hermes/ as before.
 //
@@ -9,7 +9,7 @@
 //   applyAgent({...})           per profile: adopt the jobs a home already has (the seed hook's, once),
 //                               provision a new home, then apply; returns the lines the start logs
 //   agentHarness(setup)         the harness the owner picks: `hermes` (the default) runs itself; any other runs as
-//                               Volter Harness's orchestrator's worker on the same home (ADR 0007, as amended)
+//                               Supercode Agent's orchestrator worker on the same home (ADR 0007, as amended)
 //   renderWorkerForms(from, to) that target's content: the persona and skills in the workers' forms
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, relative, resolve } from 'node:path';
@@ -141,9 +141,9 @@ export async function applyAgent(options: {
   /** Bare mode's privilege drop (setpriv): what Hermes writes into the home stays the agent's. */
   asAgent?: string[];
 }): Promise<string[]> {
-  const { orchestratorModule } = await import('./machine-supercode.ts');
-  const applier = await import(orchestratorModule('./apply'));
-  const doors = await import(orchestratorModule('./apply/doors'));
+  const { codingOrchestratorModule } = await import('./machine-supercode.ts');
+  const applier = await import(codingOrchestratorModule('./apply'));
+  const doors = await import(codingOrchestratorModule('./apply/doors'));
   const lines: string[] = [];
   const harness = agentHarness(options.setup);
   for (const [profile, declared] of Object.entries(options.setup.profiles)) {

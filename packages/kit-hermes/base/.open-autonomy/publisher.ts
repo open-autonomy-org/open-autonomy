@@ -40,13 +40,16 @@ import { existsSync, readFileSync, watch as watchFiles } from 'node:fs';
 import { spawn as spawnCommand } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
-import type { SupercodeHarnessClient, SessionDescriptor, HarnessRun } from '@volter/supercode-harness-sdk';
-import { harnessSdkModule, orchestratorEntry, supercodeBin, supercodeCommand, machineNode } from './machine-supercode.ts';
+import type { SupercodeHarnessClient, SessionDescriptor } from '@volter/supercode-harness-sdk';
+import type { HarnessRun } from '@volter/supercode-agent-sdk';
+import { harnessSdkModule, codingSdkModule, codingCommand, orchestratorEntry, supercodeBin, supercodeCommand, machineNode } from './machine-supercode.ts';
 // the machine's harness SDK (machine-supercode.ts)
 const { SupercodeHarnessClient: HarnessClient } = await import(harnessSdkModule());
+const { SupercodeHarnessClient: CodingClient } = await import(codingSdkModule());
 import { ROADMAP_SCHEMA, itemTime, linkOf, linksIn, normalizeRoadmap, type Link, type RoadmapItem } from './sdk/roadmap.ts';
 import { OpenAutonomy } from './sdk/client.ts';
 import { BoardEventSource } from './source-events.ts';
+import { containerPrograms } from './container-process.ts';
 import { publicationPolicy, publishes, SourceRewritten, takeReadVolume, TranscriptPublisher, turnsOf, type PublicationCheckpoint, type RecordedCompletion } from './reporting.ts';
 import { nativeRuntime, NativeRuntime } from './native-runtime.ts';
 import { OwnerControlState, OwnerController } from './owner-control.ts';
@@ -81,6 +84,7 @@ const container = arg('--container');
 if (container && !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(container)) throw new Error('Invalid container');
 if (container && cfg.seats) throw new Error('Host Claude seats require their own reporter');
 if (container && selectedRuntime.kind === 'orchestrator') throw new Error('This adapter supports native orchestrator publication on the bare host; container publication requires its explicit Hermes adapter');
+const executor = container ? await containerPrograms(container) : undefined;
 const projectDir = arg('--project') ?? (container ? '/work/project' : resolve(dirname(configPath), '..'));
 // A prepared install's state, custody and adoption stay in its source checkout (`--local-dir`), never in the snapshot.
 const localDirectory = resolve(arg('--local-dir') ?? dirname(configPath));
@@ -102,7 +106,8 @@ const runtimeFacts = (() => { try { const r = JSON.parse(process.env.OPEN_AUTONO
 // File/Git reads below are only for the project's documents; no native Hermes
 // database, config, jobs file or skill directory is parsed by the reporter.
 // HOME is the profile's home too: Git's route to the origin (a fleet's door rewrite) lives in its .gitconfig.
-const inContainer = (cmd: string[]) => ['docker', 'exec', '-i', '--user', 'hermes', '--env', `HERMES_HOME=${home}`, '--env', `HOME=${home}`, container!, ...cmd];
+const inContainer = (cmd: string[]) => ['docker', 'exec', '-i', '--user', 'hermes', '--env', `HERMES_HOME=${home}`, '--env', `HOME=${home}`,
+  ...(executor ? ['--env', `SUPERCODE_BIN=${executor.fleet.bin}`, '--env', `SUPERCODE_CODING_BIN=${executor.coding.bin}`, '--env', `SUPERCODE_NODE_BIN=${executor.node}`] : []), container!, ...cmd];
 // A private command group keeps committed Git reads from blocking owner controls or
 // signal handlers. Retirement includes descendants; uncertainty retains the lease.
 function run(cmd: string[], env = process.env, signal = narrativeAbort.signal): Promise<{ exitCode: number | null; stdout: string; stderr: string; exitedDueToTimeout: boolean }> {
@@ -167,13 +172,14 @@ function run(cmd: string[], env = process.env, signal = narrativeAbort.signal): 
   commands.add(work); void work.then(() => commands.delete(work), () => commands.delete(work));
   return work;
 }
-const supercode = container ? (process.env.SUPERCODE_BIN ?? 'supercode') : supercodeBin();
-const reader = container ? inContainer([supercode, 'harness', 'serve']) : supercodeCommand(['harness', 'serve'], supercode);
+const reader = executor ? inContainer(supercodeCommand(['harness', 'serve'], executor.fleet.bin, executor.node)) : supercodeCommand(['harness', 'serve'], supercodeBin());
 // An orchestrator home travels in each query and in the runtime's root. SUPERCODE_HOME stays the machine's supercode
-// home: its source lock and machine door (the session index answers through that door), never the orchestrator's.
+// home and machine door (the session index answers through that door), never the orchestrator's.
 const nativeEnvironment = { ...process.env, ...(selectedRuntime.kind === 'hermes' ? { HERMES_HOME: home } : {}) } as Record<string, string>;
 const sc = new HarnessClient({ command: reader[0], args: reader.slice(1), env: nativeEnvironment });
-const runtime = new NativeRuntime(selectedRuntime, sc);
+const codingReader = executor ? inContainer(supercodeCommand(['harness', 'serve'], executor.coding.bin, executor.node)) : codingCommand(['harness', 'serve']);
+const coding = new CodingClient({ command: codingReader[0], args: codingReader.slice(1), env: nativeEnvironment });
+const runtime = new NativeRuntime(selectedRuntime, coding);
 const ownerState = new OwnerControlState(stateFile, { account: cfg.account, apiBase: `${(cfg.platform ?? 'https://open-autonomy.org').replace(/\/$/, '')}/v1`, nativeRuntime: selectedRuntime });
 let quitting = false;
 const controlAbort = new AbortController();
@@ -181,12 +187,16 @@ const ownerOa = new OpenAutonomy({ baseUrl, key: process.env.OPEN_AUTONOMY_KEY ?
   ownerState.assert(stateFile);
   return responseWork('call', 'publisher.upstream', () => fetch(input, { ...init, signal: AbortSignal.any([controlAbort.signal, AbortSignal.timeout(20_000), ...(init?.signal ? [init.signal] : [])]) }));
 }) as typeof fetch });
-const controller = new OwnerController({ state: ownerState, runtime, sc, oa: ownerOa, account: cfg.account, tenant, abort: () => controlAbort.abort(), log });
+const controller = new OwnerController({ state: ownerState, runtime, sc: coding, oa: ownerOa, account: cfg.account, tenant, abort: () => controlAbort.abort(), log });
 let activePublication: PublicationStore | undefined, activeSource: BoardEventSource | undefined;
 let stopNarrative = () => {};
 let shutdownWork: Promise<void> | undefined;
 let narrativeWork: Promise<void> | undefined;
 let stopTranscripts = async (): Promise<void> => {};
+async function closeReaders(): Promise<void> {
+  const results = await Promise.allSettled([sc.close(), coding.close()]);
+  for (const result of results) if (result.status === 'rejected') throw result.reason;
+}
 function shutdown(code: number): Promise<void> {
   if (shutdownWork) return shutdownWork;
   quitting = true; narrativeAbort.abort(); controlAbort.abort();
@@ -194,20 +204,24 @@ function shutdown(code: number): Promise<void> {
   activeSource?.close(); stopNarrative();
   shutdownWork = (async () => {
     try {
-      await Promise.all([controller.stop(), activeSource?.stop(), narrativeWork, stopTranscripts()]);
-      await activePublication?.close();
+      const stopped = await Promise.allSettled([controller.stop(), activeSource?.stop(), narrativeWork, stopTranscripts()]);
       await Promise.allSettled(commands);
+      for (const result of stopped) if (result.status === 'rejected') throw result.reason;
       if (commandFailures.size) throw [...commandFailures][0];
+      await activePublication?.close();
     }
-    catch (error) { log(`shutdown retains uncertain publication ownership: ${(error as Error).message}`); try { await sc.close(); } finally { await closeWorkLedger(); } process.exit(1); }
-    try { await sc.close(); ownerState.close(); } finally { await closeWorkLedger(); }
+    catch (error) { log(`shutdown retains uncertain publication ownership: ${(error as Error).message}`); try { await closeReaders(); } finally { await closeWorkLedger(); } process.exit(1); }
+    try { await closeReaders(); ownerState.close(); } finally { await closeWorkLedger(); }
     process.exit(code);
   })();
   return shutdownWork;
 }
 for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(signal, () => { void shutdown(0); });
 sc.on('exit', code => { if (!quitting) { log(`Volter Harness reader exited (${code})`); void shutdown(1); } });
-await sc.start(); controller.start();
+coding.on('exit', code => { if (!quitting) { log(`Coding runtime reader exited (${code})`); void shutdown(1); } });
+const started = await Promise.allSettled([sc.start(), coding.start()]);
+for (const result of started) if (result.status === 'rejected') { log(`native reader startup failed: ${String(result.reason)}`); await shutdown(1); }
+controller.start();
 process.send?.({ type: 'reporter-ready' });
 const configWatch = watchFiles(configPath, () => { log('configuration changed; restart required'); void shutdown(1); });
 stopNarrative = () => configWatch.close();
@@ -835,8 +849,8 @@ sc.on('sessionIndexEvent', ev => {
   }
   nativeOk=false; if (membership) documentsDirty=true; requestTick();
 });
-const eventCommand=container
-  ? ['supercode-orchestrator','workflow','events','--root',home,'--json']
+const eventCommand=executor
+  ? [executor.node,executor.fleet.orchestratorEntry,'workflow','events','--root',home,'--json']
   // The orchestrator the start runs (a review World's branch build), else the machine's.
   : [machineNode(),orchestratorEntry(),'workflow','events','--root',home,'--json'];
 const source=activeSource=await retryStartup('source cache',()=>new BoardEventSource({command:container?inContainer(eventCommand):eventCommand,

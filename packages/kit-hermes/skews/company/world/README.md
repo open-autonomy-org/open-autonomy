@@ -13,10 +13,10 @@ real model.
 |---|---|
 | this checkout | the install at the branch under review (`home/`, `.open-autonomy/`) |
 | `OA_TREE` | open-autonomy at `main` (at or after 80847f05, the IR kit): the platform as a World service |
-| `SUPERCODE_TREE` | supercode at `main` (at or after 06ff1ff4, the agent mailbox), or the branch under review, built: the start runs its `supercode` and orchestrator |
+| installed `supercode` and `supercode-agent` | Fleet owns the board, mail and session reads; Agent owns coding setup, jobs and gateway. Prepare selects their installed SDK/orchestrator closures. |
 | `TWINS_ROOT` | the twin runtime and its older packs (GitHub, Anthropic, the Codex route's OpenAI) |
-| `WORLD_SLACK_CLI`, `WORLD_MERGE_CLI`, `WORLD_OPENAI_CLI` | the twins' P3 packs (twin-packs-p3 on twin-world): Slack, the Merge gateway, OpenAI's Realtime voice |
-| `VO_RH2_*` | the rehearsal RH2 (volter-ai/volter `rh2/runbooks/rehearsal`): the account Room, its call, its Slack conversation |
+| `WORLD_SLACK_CLI`, `WORLD_MERGE_CLI` | the twins' P3 packs (twin-packs-p3 on twin-world): Slack and the Merge gateway |
+| `VO_RH2_*` | the rehearsal RH2 (volter-ai/volter `rh2/runbooks/rehearsal`): the account Room and its Slack conversation |
 
 The World allows no real outbound connection (`runtime.network.egress: []`): a stray call to a real vendor is refused,
 and every credential in it is synthetic.
@@ -29,19 +29,18 @@ model, Codex profiles on the OpenAI twin), funds the account and mints its keys 
 ```bash
 export WORLD_STATE_ROOT=/fast/disk/vorg      # outside this checkout
 export OA_TREE=/path/to/open-autonomy        # at main
-export SUPERCODE_TREE=/path/to/supercode     # at main, after: cargo build -p supercode-cli
 export TWINS_ROOT=/path/to/twin
 bun world/prepare.ts                          # prints the World commands
 ```
 
 Install `.open-autonomy`'s dependencies through a tooling World first; boot downloads nothing. Native setup uses
-the selected Supercode public model and job doors, so this IR scenario requires no Hermes executable or home.
+the selected Agent public model and job doors, so this IR scenario requires no Hermes executable or home.
 `HERMES_HOME` remains a compatibility environment name for the selected instance root, not a runtime selector.
 Native owner controls currently support scheduled jobs; a declared dispatcher pause remains pending because the
 shipped public board controls cannot preserve active attempts and unrelated pauses. See OA ADR 0026.
 `VO_MACHINE_B_SUPERCODE_BIN=/path/to/supercode` gives the second machine (`machine-b`) a supercode of its own, as a box
 on another release has, with the Teams package that supercode finds beside itself (its checkout's `sdk/teams`, or its
-install's); unset, it runs `SUPERCODE_TREE`'s. `VO_MACHINE_B_CUSTODIAN=<name>` has a member of that name (invited by the
+install's); unset, it runs the selected installed Fleet release. `VO_MACHINE_B_CUSTODIAN=<name>` has a member of that name (invited by the
 owner) enroll machine-b, as a box someone else runs: the install reaches it only through the grants given on it.
 
 ## One board card, end to end
@@ -71,9 +70,8 @@ ended), and `show` prints the card, its PR and the twin's merge state. Supervisi
   stock persona); the manager's tick, the account manager's digest and the auditor's round as jobs (`tail`); a card
   tagged with a project publishes under that project once its key is in `<secrets>/projects/<owner>/<repo>/`; a review's
   session runs the `reviewer` profile.
-- **RFC 0020 rows 1–24:** through `supercode agent`, `supercode message` (send, reply, delegate, threads) and the
-  sessions' panes; a channel through `AgentMailboxBridge` over the RH2 twin; a call through `supercode voice run` with
-  `agent:` set.
+- **Mail, threads and channels:** through `supercode agent`, `supercode message` (send, reply, delegate, threads) and
+  the sessions' panes; a channel through `AgentMailboxBridge` over the RH2 twin.
 - **Native fleet routing:** the auditor's round as a job; each connector runs the machine-health probe. Recipient
   configs start empty. Enrollment subscribes the same host maintainer on both machines and opens one main on the
   install host. Inspect both machines' native agents, launches and subscriptions, then the host main's mailbox for

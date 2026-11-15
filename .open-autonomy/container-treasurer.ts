@@ -10,6 +10,7 @@
 // names: a worktree there would run the developer's Git hooks, and a log on the board's volume would put the
 // treasurer's transcript (a card's number among it) where the developer reads. The owner's bounds it reads before paying
 // (.open-autonomy/config.yaml) are the host's committed copy, written into that workspace; the platform enforces them.
+import { spawnWork } from './work-ledger.ts';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -38,17 +39,17 @@ export function treasurerPersona(kitDir: string): Record<string, string> | null 
 
 function python(container: string, script: string, input: unknown): Promise<string> {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(container)) throw new Error('A container name or ID is required.');
-  const child = spawn('docker', ['exec', '-i', '--user', 'hermes', container, '/opt/hermes/.venv/bin/python', '-c', script], { stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawnWork(() => spawn('docker', ['exec', '-i', '--user', 'hermes', container, '/opt/hermes/.venv/bin/python', '-c', script], { stdio: ['pipe', 'pipe', 'pipe'] }), 'node');
   child.stdin.on('error', () => {});
   child.stdin.end(JSON.stringify(input));
   const output: Buffer[] = [];
   child.stdout.on('data', (chunk) => output.push(chunk));
   let diagnostic = '';
   child.stderr.on('data', (chunk) => { diagnostic = (diagnostic + chunk.toString()).slice(-2000); });
-  const timer = setTimeout(() => child.kill('SIGKILL'), 60_000);
+  let failure: Error | undefined;
   return new Promise<string>((done, fail) => {
-    child.once('error', () => { clearTimeout(timer); fail(new Error('The treasurer\'s executor could not be prepared; nothing pays.')); });
-    child.once('exit', (code) => { clearTimeout(timer); if (code === 0) done(Buffer.concat(output).toString()); else fail(new Error(`The treasurer's executor could not be prepared; nothing pays. ${diagnostic.trim()}`)); });
+    child.once('error', error => { failure = error; });
+    child.once('close', code => { if (!failure && code === 0) done(Buffer.concat(output).toString()); else fail(new Error(`The treasurer's executor could not be prepared; nothing pays. ${diagnostic.trim()}`, { cause: failure })); });
   });
 }
 

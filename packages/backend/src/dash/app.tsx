@@ -1,12 +1,13 @@
 /** @jsxImportSource preact */
-// The dashboard: the work as the team reads it, built from Volter Harness's UI kit. The kit's own components carry the
+// The dashboard: the work as the team reads it, built from Supercode Agent's UI kit. The kit's own components carry the
 // sessions (the chat inventory and the conversation), the roadmap (the workflow board), the schedule (jobs and
 // their runs, the owner's pause on them); the shell around them, the money and the roster are this page's. The
 // same tree renders on the worker and hydrates in the browser, where a live session's turns arrive as they land.
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
-import { Conversation, HarnessLogo, SessionList, type MessengerLabels, type MessengerSlots, type SupercodeUiState, type UiAdapter } from '@volter/supercode-ui/preact';
-import { JobActions, JobControls, JobDetails, RunList, WorkflowBoard, WorkflowList, type JobModel, type PauseResult, type JobControlResult } from '@volter/supercode-ui/preact/supervision';
+import { Conversation, SessionList, type MessengerLabels, type MessengerSlots, type SupercodeUiState, type UiAdapter } from '@volter/supercode-agent-ui/preact';
+import { HarnessLogo } from '@volter/supercode-agent-ui/preact/logo';
+import { JobActions, JobControls, JobDetails, RunList, WorkflowBoard, WorkflowList, type JobModel, type PauseResult, type JobControlResult } from '@volter/supercode-agent-ui/preact/supervision';
 import { tenseOf } from '@open-autonomy/sdk/roadmap';
 import type { Envelope, Flow, SessionSummary } from '../ledger.js';
 import { fmtAgo, fmtDur, fmtWhen, mdToSafeHtml, shortSha, usd } from '../ui.js';

@@ -783,9 +783,11 @@ Startup requires the developer's agent.env before it starts services or writes t
 a treasurer credential alone cannot activate the fleet. It also requires Volter Harness installed on the machine, the
 one its machine daemon runs: `pnpm --config.nodeLinker=hoisted add -g --package-import-method hardlink --allow-build @homebridge/node-pty-prebuilt-multiarch --allow-build @volter/supercode @volter/supercode`,
 which brings its orchestrator, harness SDK and Teams package at the same release (upgrade the same way, never one part
-alone). The install carries no copy of its own (machine-supercode.ts): the dispatcher, the reporter and the setup run
-the machine's. Startup checks the four are one release before any service starts, and otherwise refuses, naming that
-command.
+alone). Coding setup, orchestration and channels use a separately installed Agent release:
+`pnpm --config.nodeLinker=hoisted add -g --package-import-method hardlink @volter/supercode-agent`.
+The dispatcher and session reader use Fleet; coding setup and the gateway use Agent. Each resolves its own SDK and
+orchestrator from the selected installed package. Prepared installs retain both selections in their existing receipt
+(machine-supercode.ts); an activation never replaces either with a serving source checkout.
 
 The Git helper checks the checkout root and configured origin fetch/push URLs against the project
 account, then verifies the current GitHub identity, repository access and Git fetch even on a rerun.

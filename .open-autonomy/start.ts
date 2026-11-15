@@ -28,15 +28,17 @@
 //               host — the home's .env names them (OPEN_AUTONOMY_BASE_URL, OPEN_AUTONOMY_PAY_URL) and the word `valve`
 //   reporter    keyless, publishing the home's sessions and board through the valve
 //   gateway     `hermes gateway run` in the checkout, HERMES_HOME=<home>; or, where .open-autonomy/agent.json picks
-//               another harness (`"harness": "codex"`), Volter Harness's orchestrator on the same home, running that
+//               another harness (`"harness": "codex"`), Supercode Agent's orchestrator on the same home, running that
 //               harness as each profile's worker (ADR 0007, as amended)
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
+import { spawnWork, stopWorkChild } from './work-ledger.ts';
 import { codexAccess } from './codex-auth.ts';
 import { installHostRuntime, runtimeInstallIdentity } from './install-runtime.ts';
-import { machineSupercode, machineNode, supercodeCommand } from './machine-supercode.ts';
+import { machineSupercode, machineCodingProgram, machineNode, supercodeCommand } from './machine-supercode.ts';
 import { agentHarness, agentModels, applyAgent, parseAgent, profileHarness, readAgent, renderWorkerForms, type Setup } from './agent.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { Database } from 'bun:sqlite';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { constants, hostname, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
@@ -67,10 +69,10 @@ const loadedSource = readFileSync(import.meta.path, 'utf8');
 if (!argv.includes('--stack-child')) {
   let child: ReturnType<typeof Bun.spawn> | undefined;
   let stopping = false;
-  for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => { stopping = true; child?.kill(signal); });
+  for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(signal, () => { stopping = true; if(child)stopWorkChild(child,()=>child!.kill(signal),{signal}); });
   let entry = import.meta.path;
   while (!stopping) {
-    child = Bun.spawn({ cmd: ['bun', entry, ...argv, '--stack-child'], stdio: ['ignore', 'inherit', 'inherit'] });
+    child = spawnWork(() => Bun.spawn({ cmd: ['bun', entry, ...argv, '--stack-child'], stdio: ['ignore', 'inherit', 'inherit'] }));
     const code = await child.exited;
     if (stopping || code !== 75) process.exit(stopping ? 0 : code);
     entry = resolve(project, '.open-autonomy/start.ts');
@@ -131,42 +133,63 @@ const agentEnv = (): Record<string, string> => ({ ...inherited(), AGENT_SECRETS:
 const children: Array<{ name: string; proc: ReturnType<typeof Bun.spawn> }> = [];
 let ending = false;
 let restartAsked = false;
+let closing: Promise<never> | undefined;
+let mainWatch: ReturnType<typeof setInterval> | undefined;
+const retries = new Set<ReturnType<typeof setTimeout>>(), preparing = new Set<Promise<unknown>>();
+const stopped = new Error('The bare stack is stopping');
+class StartExit extends Error { constructor(readonly code: number) { super(`Startup exited ${code}`); } }
+const hold = async <T>(work: () => Promise<T>): Promise<T> => {
+  if (ending) throw stopped;
+  const pending = work(); preparing.add(pending);
+  try { const result = await pending; if (ending) throw stopped; return result; }
+  finally { preparing.delete(pending); }
+};
+function shutdown(code: number): Promise<never> {
+  if (closing) return closing;
+  ending = true;
+  const admitted = [...preparing];
+  clearInterval(mainWatch);
+  for (const timer of retries) clearTimeout(timer); retries.clear();
+  return closing = Promise.resolve().then(async () => {
+    const failures: unknown[] = [];
+    const signal = (force = false) => {
+      for (const child of children) if (child.proc.exitCode === null && child.proc.signalCode === null) {
+        try { stopWorkChild(child.proc, () => child.proc.kill(force ? 'SIGKILL' : 'SIGTERM'), { signal: force ? 'SIGKILL' : 'SIGTERM' }); }
+        catch (error) { failures.push(error); }
+      }
+    };
+    signal();
+    // The grace period asks for escalation; departure still comes from each child.
+    const force = setTimeout(() => signal(true), 15_000);
+    const joined = await Promise.allSettled([...children.map(child => child.proc.exited), ...admitted]);
+    clearTimeout(force);
+    for (const result of joined) if (result.status === 'rejected' && result.reason !== stopped) failures.push(result.reason);
+    for (const failure of failures) console.error(`start: cleanup: ${String(failure)}`);
+    process.exit(failures.length ? 1 : code);
+  });
+}
 process.on('exit', () => {
   for (const child of children) { try { child.proc.kill(); } catch { /* already gone */ } }
 });
 function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<string, string>; asAgent?: boolean }) {
-  const proc = Bun.spawn({ cmd: opts.asAgent ? drop(cmd) : cmd, cwd: opts.cwd ?? project, env: opts.env ?? inherited(), stdout: 'inherit', stderr: 'inherit', stdin: 'ignore' });
+  if (ending) throw stopped;
+  const proc = spawnWork(() => Bun.spawn({ cmd: opts.asAgent ? drop(cmd) : cmd, cwd: opts.cwd ?? project, env: opts.env ?? inherited(), stdout: 'inherit', stderr: 'inherit', stdin: 'ignore' }));
   children.push({ name, proc });
-  proc.exited.then(async (code) => {
+  void proc.exited.then(code => {
     if (ending) return;
     if (name.startsWith('reporter')) {
-      // A reporter narrates; it does not decide whether the brain runs. It comes back in ten seconds.
       say(`${name} ended (${code}); the brain keeps running, the ${name} returns in 10 s`);
-      children.splice(children.findIndex((c) => c.proc === proc), 1);
-      setTimeout(() => { if (!ending) spawn(name, cmd, opts); }, 10_000);
-      return;
+      children.splice(children.findIndex(child => child.proc === proc), 1);
+      const timer = setTimeout(() => { retries.delete(timer); if (!ending) spawn(name, cmd, opts); }, 10_000);
+      retries.add(timer); return;
     }
-    ending = true;
     say(`${name} ended (${code}); stopping the rest`);
-    for (const c of children) if (c.proc !== proc) c.proc.kill();
-    await Promise.all(children.map((c) => c.proc.exited));
-    // the runtime drained on request (Hermes exits 75; the orchestrator, told to stop, exits 0): restart onto main
-    process.exit(name === 'gateway' && (code === 75 || (restartAsked && code === 0)) ? 75 : 1);
+    void shutdown(name === 'gateway' && (code === 75 || (restartAsked && code === 0)) ? 75 : 1);
   });
   return proc;
 }
-// Leave only once every child is gone: launchd starts the successor the moment this process exits, and a gateway still
-// winding down (a tick in flight) makes that successor find it "already running" and die at once.
-for (const sig of ['SIGTERM', 'SIGINT'] as const) process.on(sig, async () => {
-  if (ending) return;
-  ending = true;
-  for (const c of children) c.proc.kill();
-  const bound = new Promise<void>((done) => setTimeout(done, 15_000));
-  await Promise.race([Promise.all(children.map((c) => c.proc.exited)), bound]);
-  for (const c of children) if (c.proc.exitCode === null && c.proc.signalCode === null) c.proc.kill('SIGKILL');
-  process.exit(0);
-});
-
+for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(signal, () => { void shutdown(0); });
+async function start(): Promise<void> {
 mkdirSync(home, { recursive: true });
 own(home);
 mkdirSync(data, { recursive: true });
@@ -177,20 +200,26 @@ own(data);
 const deployKey = resolve(secrets, 'deploy_key');
 if (existsSync(deployKey)) {
   rmSync(sock, { force: true });
-  spawn('ssh-agent', ['ssh-agent', '-D', '-a', sock], { asAgent: true, cwd: home });
-  const t0 = Date.now(); while (!existsSync(sock) && Date.now() - t0 < 5000) Bun.sleepSync(50);
+  const ssh = spawn('ssh-agent', ['ssh-agent', '-D', '-a', sock], { asAgent: true, cwd: home });
+  await hold(async () => {
+    while (!existsSync(sock)) {
+      if (ending) throw stopped;
+      if (ssh.exitCode !== null || ssh.signalCode !== null) throw new Error('ssh-agent exited before creating its socket');
+      await Bun.sleep(50);
+    }
+  });
   const add = Bun.spawnSync({ cmd: ['ssh-add', '-q', deployKey], env: { ...process.env, SSH_AUTH_SOCK: sock }, stdout: 'pipe', stderr: 'pipe' });
-  if (add.exitCode !== 0) { console.error(`start: ssh-add ${deployKey}: ${add.stderr.toString().trim()}`); process.exit(1); }
+  if (add.exitCode !== 0) { console.error(`start: ssh-add ${deployKey}: ${add.stderr.toString().trim()}`); throw new StartExit(1); }
   say(`ssh-agent holds the deploy key at ${sock}`);
 } else say(`no ${deployKey}: pushes use your own git and keys`);
 
 // 2. The checkout.
 let committedFrom: string | undefined;
 if (!existsSync(resolve(project, '.git'))) {
-  if (!origin) { console.error(`start: ${project} is not a checkout and no --origin to clone`); process.exit(1); }
+  if (!origin) { console.error(`start: ${project} is not a checkout and no --origin to clone`); throw new StartExit(1); }
   mkdirSync(project, { recursive: true }); own(project);
   const clone = Bun.spawnSync({ cmd: drop(['git', 'clone', '-q', origin, project]), env: agentEnv(), stdout: 'inherit', stderr: 'inherit' });
-  if (clone.exitCode !== 0) { console.error(`start: cannot clone ${origin}`); process.exit(1); }
+  if (clone.exitCode !== 0) { console.error(`start: cannot clone ${origin}`); throw new StartExit(1); }
   say(`cloned ${origin} → ${project}`);
 } else {
   // What the agent IS is what main says: a clean checkout moves to origin/main before the home is synced from it
@@ -201,7 +230,7 @@ if (!existsSync(resolve(project, '.git'))) {
   // Untracked files (a task's worktree directory, a scratch note) survive a move of the checkout; only tracked
   // changes are a killed attempt's work.
   const status = git('status', '--porcelain', '--untracked-files=no');
-  if (status.exitCode !== 0 || git('fetch', '-q', 'origin').exitCode !== 0) { console.error('start: cannot inspect and fetch the committed configuration; startup stopped, retry when Git access is restored'); process.exit(1); }
+  if (status.exitCode !== 0 || git('fetch', '-q', 'origin').exitCode !== 0) { console.error('start: cannot inspect and fetch the committed configuration; startup stopped, retry when Git access is restored'); throw new StartExit(1); }
   if (status.stdout.toString().trim()) {
     // The working tree is a killed attempt's; what the agent IS still comes from main: its hermes/ is taken from
     // origin/main directly, and the tree is left for the next attempt to carry over.
@@ -210,11 +239,11 @@ if (!existsSync(resolve(project, '.git'))) {
     own(dir);
     const archive = git('archive', '--format=tar', 'origin/main', content);
     const extracted = archive.exitCode === 0 && Bun.spawnSync({ cmd: drop(['tar', '-x', '-C', dir]), stdin: archive.stdout, cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' }).exitCode === 0;
-    if (!extracted || !existsSync(resolve(dir, content))) { console.error(`start: cannot extract the committed ${content}/ configuration; startup stopped, repair snapshot permissions or the committed ${content} directory`); process.exit(1); }
+    if (!extracted || !existsSync(resolve(dir, content))) { console.error(`start: cannot extract the committed ${content}/ configuration; startup stopped, repair snapshot permissions or the committed ${content} directory`); throw new StartExit(1); }
     committedFrom = resolve(dir, content);
     say(`checkout ${project} has uncommitted changes; preserved, using Hermes configuration from origin/main`);
   } else {
-    if (git('checkout', '-q', '--detach', 'origin/main').exitCode !== 0) { console.error('start: cannot check out origin/main; startup stopped without loading local configuration'); process.exit(1); }
+    if (git('checkout', '-q', '--detach', 'origin/main').exitCode !== 0) { console.error('start: cannot check out origin/main; startup stopped without loading local configuration'); throw new StartExit(1); }
     say(`checkout ${project} at origin/main (${git('rev-parse', '--short', 'HEAD').stdout.toString().trim()})`);
   }
 }
@@ -222,10 +251,7 @@ if (!existsSync(resolve(project, '.git'))) {
 // Fetching can replace this very entrypoint. Load the landed code before claiming its
 // version is running, rather than continuing the previous script with a new kit record.
 if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loadedSource) {
-  ending = true;
-  for (const child of children) child.proc.kill();
-  await Promise.all(children.map((child) => child.proc.exited));
-  process.exit(75);
+  throw new StartExit(75);
 }
 
 // The agent's setup (docs/decisions/0007): .open-autonomy/agent.json, from the same revision the home comes from.
@@ -235,7 +261,7 @@ const agentSetup: Setup | null = (() => {
   const shown = Bun.spawnSync({ cmd: drop(['git', 'show', 'origin/main:.open-autonomy/agent.json']), cwd: project, env: agentEnv(), stdout: 'pipe', stderr: 'pipe' });
   return shown.exitCode === 0 ? parseAgent(shown.stdout.toString(), 'origin/main:.open-autonomy/agent.json') : null;
 })();
-if (!agentSetup) { console.error('start: no .open-autonomy/agent.json; run `create-open-autonomy upgrade` to derive it from hermes/config.yaml (docs/decisions/0007). No services were started.'); process.exit(1); }
+if (!agentSetup) { console.error('start: no .open-autonomy/agent.json; run `create-open-autonomy upgrade` to derive it from hermes/config.yaml (docs/decisions/0007). No services were started.'); throw new StartExit(1); }
 
 // 3. The home, from the repository: everything under hermes/ except its .env, which is the home's own.
 const committed = committedFrom ?? resolve(project, content);
@@ -243,8 +269,8 @@ const committed = committedFrom ?? resolve(project, content);
 // worker on this same home, which is then rendered in the workers' forms first, Hermes's as their shadow.
 const harness = agentHarness(agentSetup);
 // Claude Code runs on a model the valve reaches: every profile's default model names its endpoint (the platform's rail).
-if (Object.entries(agentSetup?.profiles ?? {}).some(([name, p]) => { if (profileHarness(agentSetup, name) !== 'claude-code') return false; const m = p.inference?.default ? p.inference.models?.[p.inference.default] : undefined; return !m?.endpoint && !m?.base_url; })) { console.error(`start: .open-autonomy/agent.json runs a profile on Claude Code; each such profile's default model must name its endpoint (the platform's model rail). No services were started.`); process.exit(1); }
-if (harness !== 'hermes' && !Bun.which('node')) { console.error(`start: .open-autonomy/agent.json picks ${harness}, which Volter Harness's orchestrator runs, and it needs node (22.13 or later) on PATH. No services were started.`); process.exit(1); }
+if (Object.entries(agentSetup?.profiles ?? {}).some(([name, p]) => { if (profileHarness(agentSetup, name) !== 'claude-code') return false; const m = p.inference?.default ? p.inference.models?.[p.inference.default] : undefined; return !m?.endpoint && !m?.base_url; })) { console.error(`start: .open-autonomy/agent.json runs a profile on Claude Code; each such profile's default model must name its endpoint (the platform's model rail). No services were started.`); throw new StartExit(1); }
+if (harness !== 'hermes' && !Bun.which('node')) { console.error(`start: .open-autonomy/agent.json picks ${harness}, which Supercode Agent's orchestrator runs, and it needs node (22.13 or later) on PATH. No services were started.`); throw new StartExit(1); }
 if (existsSync(committed)) {
   // The kit's own families are mirrored, not merged: a skill or hook the checkout no longer has leaves the home too.
   for (const family of ['skills/open-autonomy', 'hooks', 'plugins/escalate']) rmSync(resolve(home, family), { recursive: true, force: true });
@@ -269,7 +295,7 @@ const onCodex = agentModels(agentSetup).some((m) => m.provider === 'openai-codex
 const codexPort = valvePort + 2;
 const codexTwin = process.env.HERMES_CODEX_BASE_URL?.trim();
 const codexForward = codexTwin || (onCodex ? `http://127.0.0.1:${codexPort}/backend-api/codex` : undefined);
-if (onCodex && !codexTwin) await codexAccess();
+if (onCodex && !codexTwin) await hold(() => codexAccess());
 // A home that still routes its model through a custom provider at HERMES_CODEX_BASE_URL gets no valve and no
 // address: every run would fail on a connection error, silently. Say so where the operator reads.
 if (!onCodex && !codexTwin && JSON.stringify(agentSetup).includes('HERMES_CODEX_BASE_URL')) console.error('start: the model config expects the Codex valve (HERMES_CODEX_BASE_URL) but names no openai-codex provider; give the named model provider openai-codex in .open-autonomy/agent.json and drop the custom provider, or every run fails to connect');
@@ -369,6 +395,9 @@ spawn('valve', ['bun', resolve(import.meta.dir, 'valve.ts'), '--loopback', ...ke
 //    costs no registry call, which a sealed world could not make.
 const env = agentEnv();
 const selectedMachine = machineSupercode();
+const selectedCoding = machineCodingProgram(env);
+env.SUPERCODE_BIN = selectedMachine.bin;
+env.SUPERCODE_CODING_BIN = selectedCoding.bin;
 env.SUPERCODE_NODE_BIN = machineNode();
 {
   // A committed lock pins the install (frozen); one git does not track (ignored, or left by an older install) is
@@ -376,32 +405,34 @@ env.SUPERCODE_NODE_BIN = machineNode();
   const committed = (file: string) => Bun.spawnSync({ cmd: drop(['git', 'ls-files', '--error-unmatch', relative(project, file)]), cwd: project, env, stdout: 'ignore', stderr: 'ignore' }).exitCode === 0;
   const lock = ['pnpm-lock.yaml'].map((file) => resolve(import.meta.dir, file)).find((file) => existsSync(file) && committed(file));
   const stamp = resolve(import.meta.dir, 'node_modules', '.open-autonomy-install');
-  const runtimeOptions = { directory: import.meta.dir, environment: env, registry: arg('--runtime-registry'), archive: arg('--runtime-package') };
+  const runtimeOptions = { directory: import.meta.dir, coding: selectedCoding, environment: env, registry: arg('--runtime-registry'), archive: arg('--runtime-package') };
   const want = runtimeInstallIdentity(runtimeOptions);
   if ((existsSync(stamp) ? readFileSync(stamp, 'utf8').trim() : '') !== want) {
-    await installHostRuntime({ ...runtimeOptions, environment: env, command: drop, frozen: !!lock });
+    await hold(() => installHostRuntime({ ...runtimeOptions, environment: env, command: drop, frozen: !!lock }));
     writeFileSync(stamp, `${runtimeInstallIdentity(runtimeOptions)}\n`);
     say(`reporter dependencies installed in ${import.meta.dir}`);
   }
 }
 // 6. The agent's setup into its home, before anything runs there: each profile's model, settings and jobs, through
-//    Hermes's own functions (Volter Harness's applier), owned by their Hermes ids against a base beside the home. A setup
+//    Hermes's own functions (Supercode Agent's applier), owned by their Hermes ids against a base beside the home. A setup
 //    that cannot be applied stops the start: a gateway on an unrendered home would run on Hermes's default model.
 try {
-  const lines = await applyAgent({
+  const lines = await hold(() => applyAgent({
     setup: agentSetup, homeOf: (profile) => (profile === 'default' ? home : resolve(home, 'profiles', profile)),
     homeId: account ?? basename(project), stateRoot: resolve(home, '..', 'apply'), workspace: project, asAgent: user ? drop([]) : [],
-  });
+  }));
   for (const line of lines) say(`agent: ${line}`);
 } catch (error) {
+  if (ending) throw stopped;
   console.error(`start: the agent's setup could not be applied: ${(error as Error).message}. No gateway was started.`);
-  process.exit(1);
+  throw new StartExit(1);
 }
 // What runs the agent, for its page: bare on this host, and which kit. Never a credential.
 const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return JSON.parse(readFileSync(resolve(import.meta.dir, 'kit.json'), 'utf8')).version; } catch { return undefined; } })(), host: hostname() });
 // The installed builds, unless the environment names others: a review or a World runs an unreleased branch's build of
 // supercode and its orchestrator (OPEN_AUTONOMY_SUPERCODE_BIN, OPEN_AUTONOMY_ORCHESTRATOR_BIN) on the same start.
 const orchestratorBin = selectedMachine.orchestratorEntry;
+const codingOrchestratorBin = selectedCoding.orchestratorEntry;
 const supercodeBin = selectedMachine.bin;
 spawn('reporter', ['bun', resolve(import.meta.dir, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
 // Each project's reporter: the organization's publication policy under the project's account, its cards (its tenant)
@@ -418,7 +449,7 @@ for (const p of projectReporters) {
 // (it holds the home's gateway lock as Hermes's gateway does, so the two never serve one home at once).
 const gateway = harness === 'hermes'
   ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
-  : spawn('gateway', [machineNode(), orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+  : spawn('gateway', [machineNode(), codingOrchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 // A home that declares its board (workflow.yaml, the board IR) has its dispatcher here, a service of this start like the
 // rest, so the board runs only through the install's own start (docs/decisions/0017).
 const boardDeclared = harness !== 'hermes' && existsSync(resolve(home, 'workflow.yaml'));
@@ -434,26 +465,18 @@ if (harness !== 'hermes') {
 // brings it in (runhuman-2 ADR 0063).
 // They are the home's declared agents too (the IR's agent layer, `agents.json`: supercode docs/architecture/orchestrator.md
 // §2.10), so an export names each one it folds into its profile.
-/** The Teams agent this home declared for a mailbox agent (by its name, else its profile), from the home's own agent store
- * as supercode's orchestrator reads it (`homeAgentId`, sdk/orchestrator/agents.mjs: keys `<Teams origin>/<team>/agent/<name>`
- * and `…/profile/<profile>` under the selected Teams context), never a path guessed from folder names. */
+/** The installed Fleet Teams package owns declared home identity and its store codec. */
 function homeAgent(name: string, profile: string): string | null {
-  const shown = Bun.spawnSync({ cmd: drop(supercodeCommand(['teams', 'context', 'show', '--json'], supercodeBin)), cwd: home, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
-  let context: { origin?: string; team_id?: string };
-  try { context = JSON.parse(shown.stdout.toString()); } catch { return null; }
-  const file = resolve(home, 'agent-state.sqlite');
-  if (!context.origin || !context.team_id || !existsSync(file)) return null;
-  // A store the orchestrator holds open read-only: a read it refuses is no agent found, said by the caller.
-  let db: Database;
-  try { db = new Database(file, { readonly: true }); } catch { return null; }
-  try {
-    const at = (key: string): string | null => {
-      const stable = `${context.origin}/${context.team_id}/${key}`;
-      return (db.query('SELECT agent_id FROM agent_declaration_heads WHERE org = ? AND key = ?').get(context.team_id!, stable) as { agent_id?: string } | null)?.agent_id
-        ?? (db.query('SELECT id FROM agent_intents WHERE org = ? AND key = ?').get(context.team_id!, stable) as { id?: string } | null)?.id ?? null;
-    };
-    return (name !== profile ? at(`agent/${name}`) : null) ?? at(`profile/${profile}`);
-  } catch { return null; } finally { db.close(); }
+  const shown = Bun.spawnSync({ cmd: drop(supercodeCommand(['teams', 'context', 'show', '--json'], supercodeBin)), cwd: home, env, stdout: 'pipe', stderr: 'pipe' });
+  if (shown.exitCode !== 0) throw new Error(`Cannot read Teams context: ${shown.stderr.toString().trim()}`);
+  const context = JSON.parse(shown.stdout.toString()) as { origin?: string; team_id?: string };
+  if (!context.origin || !context.team_id) throw new Error('Teams context names no origin or organization');
+  const entry = pathToFileURL(createRequire(supercodeBin).resolve('@volter/supercode-teams/native-agent-identity')).href;
+  const found = Bun.spawnSync({ cmd: drop([machineNode(), '--input-type=module', '-e',
+    'const { homeAgentId } = await import(process.argv[1]); console.log(JSON.stringify(homeAgentId(process.argv[2], { org: process.argv[3], server: process.argv[4], name: process.argv[5], profile: process.argv[6] })));',
+    entry, home, context.team_id, context.origin, name, profile]), cwd: home, env, stdout: 'pipe', stderr: 'pipe' });
+  if (found.exitCode !== 0) throw new Error(`Cannot read declared Teams identity for ${name}: ${found.stderr.toString().trim()}`);
+  return JSON.parse(found.stdout.toString());
 }
 const agentLayerFile = resolve(home, 'agents.json');
 const agentLayer = existsSync(agentLayerFile) ? JSON.parse(readFileSync(agentLayerFile, 'utf8')) : {};
@@ -509,7 +532,7 @@ let startedMain = Bun.spawnSync({ cmd: drop(['git', 'rev-parse', 'origin/main'])
 // (a roadmap, a changelog) move main every time the agent records its work; a move that touches only them advances
 // the mark with no restart, since a restart refuses whatever arrives while Hermes drains.
 let mainCheckedAt = 0, mainMoved: string | undefined;
-setInterval(() => {
+mainWatch = setInterval(() => {
   if (ending || restarting) return;
   let request: { version?: string } | undefined;
   if (existsSync(restartRequest)) {
@@ -540,4 +563,10 @@ setInterval(() => {
 }, 5000);
 say(`${harness === 'hermes' ? 'gateway' : `orchestrator (worker ${harness})`} up in ${project} as ${user?.name ?? userInfo().username}, home ${home}; the valve on :${valvePort}${paying ? ` and :${valvePort + 1} (a rehearsal's pay port)` : ''}${codexForward ? `; the Codex subscription through ${codexForward}` : ''}${githubRecords.length ? `; the GitHub App on ${githubRecords.map((r) => `:${r.port}`).join(' and ')}` : ''}`);
 if (!readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8').includes('account:')) say('warning: .open-autonomy/config.yaml names no account');
+}
+try { await start(); }
+catch (error) {
+  if (error !== stopped && !(error instanceof StartExit)) console.error(`start: ${String(error)}`);
+  await shutdown(error instanceof StartExit ? error.code : 1);
+}
 await new Promise(() => {});

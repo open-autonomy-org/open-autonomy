@@ -740,7 +740,14 @@ If a completed credential step has missing files in the selected directory, setu
 its record or issuing replacements. Reconcile the intended host/directory and restore credentials or
 prepare an explicit recovery using the provider's evidence. File presence still does not prove access.
 Startup requires the developer's agent.env before it starts services or writes the runtime home;
-a treasurer credential alone cannot activate the fleet.
+a treasurer credential alone cannot activate the fleet. It also requires Volter Harness installed on the machine, the
+one its machine daemon runs: `pnpm --config.nodeLinker=hoisted add -g --package-import-method hardlink --allow-build @homebridge/node-pty-prebuilt-multiarch --allow-build @volter/supercode @volter/supercode`,
+which brings its orchestrator, harness SDK and Teams package at the same release (upgrade the same way, never one part
+alone). Coding setup, orchestration and channels use a separately installed Agent release:
+`pnpm --config.nodeLinker=hoisted add -g --package-import-method hardlink @volter/supercode-agent`.
+The dispatcher and session reader use Fleet; coding setup and the gateway use Agent. Each resolves its own SDK and
+orchestrator from the selected installed package. Prepared installs retain both selections in their existing receipt
+(machine-supercode.ts); an activation never replaces either with a serving source checkout.
 
 The Git helper checks the checkout root and configured origin fetch/push URLs against the project
 account, then verifies the current GitHub identity, repository access and Git fetch even on a rerun.

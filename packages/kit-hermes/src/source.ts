@@ -19,28 +19,34 @@ export function sourceEnvironment(): Record<string, string> {
       return value === undefined ? [] : [[name, selected && name !== 'OPEN_AUTONOMY_SOURCE_ONLY' && value ? resolve(value) : value]];
     }));
 }
-export function kitSource(version: string, directory: string | undefined) {
+export function kitSource(version: string, directory: string | undefined, { ancestor = false } = {}) {
   if (!directory?.trim()) throw new Error('kit source mode requires OPEN_AUTONOMY_SOURCE: the selected Open Autonomy source checkout; registry code is never a fallback');
   const root = realpathSync(resolve(directory));
   const kit = resolve(root, 'packages/kit-hermes'), sdk = resolve(root, 'packages/sdk');
   const manifest = JSON.parse(readFileSync(resolve(kit, 'package.json'), 'utf8'));
   const expected = /^(?:workspace:)?(\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?)$/.exec(manifest.dependencies?.['@open-autonomy/sdk'] ?? '')?.[1];
+  const historicalWorkspace = ancestor && manifest.dependencies?.['@open-autonomy/sdk'] === 'workspace:*';
   const dependency = JSON.parse(readFileSync(resolve(sdk, 'package.json'), 'utf8'));
-  if (manifest.name !== 'create-open-autonomy' || manifest.version !== version || !expected)
+  if (manifest.name !== 'create-open-autonomy' || manifest.version !== version || !expected && !historicalWorkspace)
     throw new Error(`kit source ${kit} must be create-open-autonomy@${version} with an exact SDK dependency; found ${manifest.name}@${manifest.version}`);
-  if (dependency.name !== '@open-autonomy/sdk' || dependency.version !== expected)
+  if (dependency.name !== '@open-autonomy/sdk' || expected && dependency.version !== expected
+    || historicalWorkspace && !/^\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/.test(dependency.version))
     throw new Error(`kit source SDK ${sdk} must be @open-autonomy/sdk@${expected}; found ${dependency.name}@${dependency.version}`);
   const git = (...args: string[]) => {
-    const result = spawnSync('git', args, { cwd: root, encoding: 'utf8', timeout: 10_000 });
+    const env: NodeJS.ProcessEnv = { ...process.env, GIT_NO_LAZY_FETCH: '1' };
+    for (const name of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_PREFIX']) delete env[name];
+    const result = spawnSync('git', args, { cwd: root, env, encoding: 'utf8' });
     if (result.status !== 0) throw new Error(`kit source Git ${args[0]} failed in ${root}: ${(result.stderr || result.stdout).trim()}`);
     return result.stdout.trim();
   };
   if (realpathSync(git('rev-parse', '--show-toplevel')) !== root || realpathSync(kit) !== kit || realpathSync(sdk) !== sdk)
     throw new Error(`kit source ${root} must be the owning source checkout, with its kit and SDK inside it`);
   git('ls-files', '--error-unmatch', 'packages/kit-hermes/package.json', 'packages/kit-hermes/src/cli.ts', 'packages/sdk/package.json', 'packages/sdk/src/index.ts');
+  if (ancestor && git('status', '--porcelain', '--untracked-files=all', '--', 'packages/kit-hermes', 'packages/sdk'))
+    throw new Error(`kit ancestor ${root} must retain its kit and SDK at the same unchanged Git commit`);
   const cli = realpathSync(resolve(kit, manifest.bin?.['create-open-autonomy'] ?? ''));
   if (cli !== resolve(kit, 'src/cli.ts')) throw new Error(`kit source ${kit} must select its native src/cli.ts bin`);
-  return { root, kit, sdk, cli, version, sdkVersion: expected, commit: git('rev-parse', 'HEAD') };
+  return { root, kit, sdk, cli, version, sdkVersion: dependency.version, commit: git('rev-parse', 'HEAD') };
 }
 export function preparedKitSource(source: ReturnType<typeof kitSource>): string {
   const actual = realpathSync(Bun.resolveSync('@open-autonomy/sdk/package.json', dirname(source.cli)));
@@ -53,7 +59,7 @@ export function ancestorSource(version: string) {
   if (!cache) throw new Error(`kit source upgrade from ${version} requires OPEN_AUTONOMY_KIT_CACHE with that version's kit and SDK source links; registry code is never a fallback`);
   const dir = resolve(cache, version), kitLink = resolve(dir, 'node_modules/create-open-autonomy'), sdkLink = resolve(dir, 'node_modules/@open-autonomy/sdk');
   if (!lstatSync(kitLink).isSymbolicLink() || !lstatSync(sdkLink).isSymbolicLink()) throw new Error(`kit ancestor ${dir} must link its owning kit and SDK source`);
-  const kit = realpathSync(kitLink), source = kitSource(version, resolve(kit, '../..'));
+  const kit = realpathSync(kitLink), source = kitSource(version, resolve(kit, '../..'), { ancestor: true });
   if (source.kit !== kit || realpathSync(sdkLink) !== source.sdk) throw new Error(`kit ancestor ${dir} must link the kit and exact SDK in the same owning source checkout`);
   preparedKitSource(source);
   return { ...source, dir };

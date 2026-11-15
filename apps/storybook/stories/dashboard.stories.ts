@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/html-vite';
 import { h, render } from 'preact';
-import '@volter/supercode-ui/styles.css';
+import '@volter/supercode-agent-ui/styles.css';
 import { DASH_CSS, DashApp, type DashData, type DashPage } from '../../../packages/backend/src/dash/index';
 import { PRESETS } from '../../../packages/backend/src/page/model';
 import { OPEN_AUTONOMY_LOGO } from '../../../packages/backend/src/page/brand';
@@ -8,7 +8,7 @@ import { NOW, hookline, openAutonomy, pmTail } from './fixtures';
 import hlCalls from '../fixtures/hookline-calls.json';
 import oaPm from '../fixtures/open-autonomy-pm-session.json';
 
-// The dashboard: the core's, for the team; what a self-host serves. Volter Harness's UI kit over the SDK's records, in
+// The dashboard: the core's, for the team; what a self-host serves. Supercode Agent's UI kit over the SDK's records, in
 // the kit's own tokens; the shell, the money and the roster are the page's.
 const live = (fx: typeof openAutonomy) => ({ live: [pmTail.key], tail: pmTail, sessions: [{ ...fx.sessions.find((s) => s.key === pmTail.key)!, status: 'live', ended_at: undefined, outcome: undefined, started_at: new Date(NOW - 4 * 60_000).toISOString() }, ...fx.sessions.filter((s) => s.key !== pmTail.key)] });
 const TEAM = [{ id: 'owner', name: 'miamiviceroy', github: { id: '2255943', login: 'yueranyuan' }, scopes: ['owner', 'direction', 'release-review'], source: 'Verified on GitHub and Discord at setup.' }];
