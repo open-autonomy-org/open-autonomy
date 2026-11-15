@@ -204,6 +204,15 @@ export function runtimeInstallIdentity(options: Pick<Options, 'directory' | 'reg
   return hash.digest('hex');
 }
 
+/** Read the exact dependency declaration from a native npm archive. */
+export function packedManifest(path: string): { name: string; version: string; [key: string]: any } {
+  const packed = spawnSyncWork(() => Bun.spawnSync(['tar', '-xOf', path, 'package/package.json']));
+  if (packed.exitCode !== 0) throw new Error(`Cannot read runtime package ${path}`);
+  const manifest = JSON.parse(packed.stdout.toString());
+  if (typeof manifest.name !== 'string' || typeof manifest.version !== 'string') throw new Error(`Runtime archive ${path} has no package identity`);
+  return manifest;
+}
+
 export async function installHostRuntime(options: Options): Promise<void> {
   const links = sourceLinks(options);
   const registry = new URL(options.registry ?? 'https://registry.npmjs.org');
@@ -212,9 +221,7 @@ export async function installHostRuntime(options: Options): Promise<void> {
   }
   const artifacts = new Map<string, { manifest: any; bytes: Buffer; sha256: string; integrity: string }>();
   for (const path of archivePaths(options.archive)) {
-    const packed = spawnSyncWork(() => Bun.spawnSync(['tar', '-xOf', path, 'package/package.json']));
-    if (packed.exitCode !== 0) throw new Error(`Cannot read runtime package ${path}`);
-    const manifest = JSON.parse(packed.stdout.toString());
+    const manifest = packedManifest(path);
     if ((manifest.name !== 'create-open-autonomy' && manifest.name !== '@open-autonomy/sdk' && !/^@volter\/[a-z0-9-]+$/.test(manifest.name)) || typeof manifest.version !== 'string') {
       throw new Error('Runtime archive must be a versioned kit, SDK or @volter package');
     }
