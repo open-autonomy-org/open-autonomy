@@ -71,7 +71,7 @@ closure and retains every failure except that owner's explicit cancellation.
 Hookline acknowledges a frame only on the socket that received it; reconnecting
 cannot transfer that frame's acknowledgment to a replacement socket. Host Codex
 startup and authentication follow native replies or failure, including protocol
-EOF while a request is pending, with cancellation joining the owned process. Every startup authentication acquisition takes its stack owner's cancellation signal; shutdown aborts it before joining admitted preparation. The keeper and any adopter-owned bare stack preserve that same ownership. HTTP authentication and refresh use their request's signal, including the upstream response, so a disconnected caller leaves no detached authentication work.
+EOF while a request is pending, with cancellation joining the owned process. Every startup authentication acquisition takes its stack owner's cancellation signal; shutdown aborts it before joining admitted preparation. The keeper and any adopter-owned bare stack preserve that same ownership. HTTP authentication and refresh use their request's signal, including the upstream response, so a disconnected caller leaves no detached authentication work. Setup's subscription step is the CLI acquisition owner: its termination handlers exist only while that acquisition is admitted, abort the same native request and remain installed until Codex process closure is joined. The existing CLI failure path exits after that join; cancellation starts no later setup step.
 Owner-control shutdown cancels its reads and submitted mutation observation,
 preserves unknown effects and joins the admitted work
 before its lease can close. Selected runtime calls introduce no default SDK

@@ -351,7 +351,12 @@ function codexLogin(): boolean {
 async function stepSubscription(s: Situation, opts: Opts, st: SetupState): Promise<void> {
   say("\nSubscription: both Hermes profiles use openai-codex through the host valve. The installed Codex owns the current login and refresh. Setup does not copy credentials; run the host service as this user with the same CODEX_HOME.");
   if (opts.plan) return;
-  await codexAccess();
+  const lifetime = new AbortController();
+  const signals = ['SIGTERM', 'SIGINT', 'SIGHUP'] as const;
+  const stop = () => lifetime.abort(new Error('Setup authentication interrupted'));
+  for (const signal of signals) process.on(signal, stop);
+  try { await codexAccess({ signal: lifetime.signal }); }
+  finally { for (const signal of signals) process.off(signal, stop); }
   // the agent's setup (docs/decisions/0007): each profile's named model moves to the subscription, nothing else
   const file = join(s.dir, '.open-autonomy', 'agent.json');
   if (existsSync(file)) {
