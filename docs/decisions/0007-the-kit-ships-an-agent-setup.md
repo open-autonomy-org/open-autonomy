@@ -1,4 +1,4 @@
-# ADR 0007: The kit ships an agent-setup package; Supercode's applier renders it into the harness
+# ADR 0007: The kit ships an agent-setup package; Agent's applier renders it into the harness
 
 Status: Proposed. Accepted only upon independent constitution review and merge of this record with its
 first implementation; proposed until both occur.
@@ -18,10 +18,9 @@ permalink; the quotations record scope, not independent approval).
   switch to supercode - for other people they probably are more comfortable with hermes"; "our system is
   actually smart about what to do"; "be super sure about the IR"; "set a goal to complete all steps".
 
-**The IR.** Supercode's accepted
-[agent-setup IR](https://github.com/volter-ai/supercode/blob/main/docs/architecture/content-spec-status.md),
-derived from 269 elements of thirteen real setups (this repository's own agent and Hookline among them) and
-a fresh adversarial review ([plan](https://github.com/volter-ai/supercode/blob/main/docs/plans/content-spec-status.md)).
+**The IR.** Agent owns the accepted
+[agent-setup contract](https://github.com/volter-ai/supercode-agent/blob/main/docs/architecture/content-spec-status.md)
+under [ADR 0036](0036-fleet-and-coding-programs-have-separate-owners.md).
 What this record uses from it:
 - a package is the one source: content files (persona, skills, hooks, plugins, gate scripts) are their own
   declaration; declared records (jobs, `Inference`, harness settings under `extensions.<harness>`) sit
@@ -30,7 +29,7 @@ What this record uses from it:
   overlay), the agent, the runtime (custody, the workspace), the harness; a write by anyone else is a
   conflict reported to the manager;
 - `Inference`: named models with default and unattended pointers, and a key only by its custody name;
-- the applier (`orchestrator apply`, Supercode `sdk/orchestrator/apply`): records owned by harness id
+- the applier (`@volter/supercode-agent-orchestrator/apply`): records owned by harness id
   against a base in the applier's own state per home, through the harness's own functions (Hermes's cron
   and config functions under its own interpreter), a home with no state plan-only until provisioned or
   adopted, `delete` only through a reviewed plan.
@@ -98,7 +97,7 @@ What this record uses from it:
 ## What this record extrapolates beyond the owner's words
 
 The owner directed that the template be written once and rendered for the harness picked, that a
-project's spec be a file its repository merges, and that the IR be derived from real setups; Supercode's
+project's spec be a file its repository merges, and that the IR be derived from real setups; the setup
 IR is accepted. The following are this author's design, marked so:
 - the file name and shape of `agent.json`, and one entry per profile;
 - applying at every start, before the gateway, per profile;
@@ -120,7 +119,7 @@ wrote only `cron.model`, left the notepad byte-identical, and the second apply s
 ## Order of proof
 
 Each step is a hand-run walk; a step that fails stops the ones after it.
-1. A Supercode release carrying the applier, pinned by the host package (`^0.2.2`).
+1. The host selects Agent's installed applier from the same coding release as its SDK and command.
 2. A fresh project home: its start provisions, applies, and `jobs list` shows `pm` pinned to `project`'s
    model with the checkout as workdir; a second start reports nothing.
 3. A home already seeded by the old hook: the first start adopts `pm`, the next converges; its notepad is
@@ -131,9 +130,6 @@ Each step is a hand-run walk; a step that fails stops the ones after it.
 
 ## Alternatives and tradeoffs
 
-- **Supercode's name-keyed `jobs apply` and `model-route apply` (this record's earlier draft).** Removed
-  from Supercode: they matched jobs by name, drove Hermes's CLI (which exits 0 on failure) and kept no
-  base, so a renamed job was created twice and a live edit was silently reverted.
 - **Keep `config.yaml` committed beside the package.** Two copies of one fact: an edit to either is
   ambiguous. The IR makes the package the one source.
 - **Keep the seed hook.** It is Hermes-only, re-pins on every start with no record of who changed what,
@@ -164,4 +160,4 @@ Each step is a hand-run walk; a step that fails stops the ones after it.
 - **No automated tests; nothing develops against a real API.** Compatible: each proof step is a hand-run
   walk in a World.
 - **Out of scope (as amended in #706).** Compatible: the kit declares a package and implements no harness;
-  Supercode's applier is its tool.
+  Agent's applier is its tool.
