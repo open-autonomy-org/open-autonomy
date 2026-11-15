@@ -42,7 +42,7 @@ An explicitly named `SUPERCODE_CODING_BIN` source package may declare an exact
 `workspace:<version>` dependency. Only that prefix is normalized: each package
 is resolved from that same selected package and its actual version must match
 the declared exact version. Ordinary installed selection still requires the
-manifest's exact version pin. OA and RH2 source images retain explicitly named,
+manifest's exact version pin. An explicitly named native packed program may instead declare a `file:` npm archive. The existing native archive reader supplies that archive's own exact package name and version, which must match the dependency resolved from the selected program; npm or pnpm retains archive integrity ownership. A source archive is never compared to a version string or selected from an ambient graph. OA and RH2 source images retain explicitly named,
 separate Fleet and Agent source contexts; each native workspace is installed
 and built by pnpm. No serving-source inference selects either product.
 
@@ -106,7 +106,7 @@ bytes and meaning; this change does not rewrite their historical records.
 
 The shared kit template is the source of installation changes. Volter-org
 receives them through `create-open-autonomy upgrade`, preserving its manager
-profile, role prompts, workflow and agent declaration. It keeps no competing
+profile, role prompts, workflow and agent declaration. Its active start imports the selected kit keeper, so the cutover selects the current source-built keeper and its exact SDK while retaining the older archived kit and SDK bytes. A project-owned archive pin cannot keep the active keeper on the earlier combined program boundary. It keeps no competing
 design record in the installation repository.
 
 Upgrade ancestors retain their original source declarations. Historical kits

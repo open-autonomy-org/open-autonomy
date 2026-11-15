@@ -1,6 +1,6 @@
 // Installed fleet and coding releases, selected from their own public package closures (ADR 0036).
 // Existing explicit World selections name all fleet inputs; ordinary installs never import a serving source tree.
-import { machinePublishedBinding } from './install-runtime.ts';
+import { machinePublishedBinding, packedManifest } from './install-runtime.ts';
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
@@ -75,6 +75,10 @@ function installedProgram(command: string, packageName: string, pinned: string[]
   const wrong = pinned.flatMap(name => {
     const found = roots.get(name) ? json(join(roots.get(name)!, 'package.json'))?.version : null;
     const expected = selectedBin && /^workspace:\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/.test(pins[name] ?? '') ? pins[name].slice(10) : pins[name];
+    if (selectedBin && typeof expected === 'string' && expected.startsWith('file:') && expected.endsWith('.tgz')) {
+      const declared = packedManifest(resolve(pkg, expected.slice(5)));
+      return declared.name === name && found === declared.version ? [] : [`${name} is ${found ?? 'missing'} where ${packageName} selects ${declared.name}@${declared.version} from ${expected}`];
+    }
     return expected && found === expected ? [] : [`${name} is ${found ?? 'missing'} where ${packageName} pins ${pins[name] ?? 'nothing'}`];
   });
   if (wrong.length) refuse(`${packageName} ${manifest.version} at ${pkg} is not one release: ${wrong.join('; ')}`);
