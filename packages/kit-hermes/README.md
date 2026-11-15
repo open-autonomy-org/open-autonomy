@@ -108,7 +108,7 @@ pushes `publish`, so it deploys nothing (ADR 0033) (`--check` lists what it woul
 publish). Before any upload it scans the lockfiles the kit ships (`.github/release-scan.mjs`), packs each version once
 from the files git tracks with git's file modes, installs every tarball fresh and resolves its modules
 (`scripts/npm-verify-tarballs.mjs`), and sweeps every file of it for keys with supercode's
-`scripts/npm-keys-sweep.mjs` at the commit the script pins (gitleaks, every compressed entry opened, the machine's
+[keys-sweep script](https://github.com/volter-ai/supercode/blob/main/scripts/npm-keys-sweep.mjs) at the commit the publishing script pins (gitleaks, every compressed entry opened, the machine's
 supercode custody values and `@volter/teams/redact`'s token forms); any failure publishes nothing. Only
 those swept tarballs are uploaded, npm's integrity for each is read back against the file's, and a new kit version is
 recorded as a `release-v<version>` tag and GitHub release. The world proves the same publish and a `bun create
