@@ -225,18 +225,6 @@ export async function upgrade(dir: string): Promise<Upgrade> {
     out.written.push('.open-autonomy/agent.json (from the project\'s own Hermes config and job seed)');
     for (const rel of LEGACY_FILES) if (existsSync(join(dir, rel))) { rmSync(join(dir, rel), { force: true }); prune(dir, rel); out.retired.push(rel); }
   }
-  // Migrate only missing planning notes, using this project's seed rather than
-  // the template's hello task. The live board is reconciled by PM, never by upgrade. A roadmap is a tracking form a
-  // skew chooses instead of a board (manage-project, self-build); an install whose skew keeps none is given none.
-  if (theirs.has('ROADMAP.md') && !existsSync(join(dir, 'ROADMAP.md'))) {
-    const seedFile = join(dir, 'hermes/kanban.seed.json');
-    if (existsSync(seedFile)) {
-      const seed = JSON.parse(readFileSync(seedFile, 'utf8')) as { tasks: Array<{ key: string; title: string; acceptance?: string[]; held?: string }> };
-      const notes = seed.tasks.map((t) => `## ${t.key}: ${t.title}\n\nStatus: historical intention; reconcile with the live board and landed work.\nDispatch: hold\n\nSource: [committed seed](hermes/kanban.seed.json), key \`${t.key}\`. This is not evidence of current priority or completion.\n${t.held ? `\nExisting hold: ${t.held}\n` : ''}\nCompletion:\n${(t.acceptance ?? []).map((a) => `- ${a}`).join('\n')}\n`).join('\n');
-      put(join(dir, 'ROADMAP.md'), 'ROADMAP.md', Buffer.from(`# ${rec.params.project} roadmap\n\nNotable intentions maintained by the Hermes PM scrum. Imported historical intentions await reconciliation; existing tasks, owners and holds remain intact.\n\n${notes}\nPM must reconcile this import against landed history and the live board before dispatch. Distill notable landed changes into CHANGELOG.md; retain outstanding release and verification outcomes here. Routine activity stays in source history.\n`));
-      out.written.push('ROADMAP.md');
-    }
-  }
   for (const rel of new Set([...base.keys(), ...theirs.keys()])) {
     if (rel === KIT_FILE || !isOwned(rel)) continue;
     if (derived && rel === '.open-autonomy/agent.json') continue;

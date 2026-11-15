@@ -57,17 +57,18 @@ the host's package selections. Executor commands resolve Fleet, Agent and Node
 inside that executor through the same installed-package resolver before the
 host constructs their literal argv; a host path never selects an executor
 program. Executor inspection is read-only native work under the existing
-container process owner's stdin lease. That owner reaps the remote process
-and joins its command/output closure, including explicit cancellation, before
-inspection returns its selections.
+container process owner's stdin lease. Inspection awaits its native command
+and output before returning selections; a local command's closure does not
+certify that a remote process has stopped.
 
 The same native-work ownership applies throughout the shared kit: hookline's
 mail RPC, container home/treasurer preparation and maintenance commands await
 their native result and all owned output/child closure. Container and fleet
 readiness follow their health/IPC result, actual child failure or explicit
-shutdown; progress and retry cadence set no failure time. Shutdown snapshots
-admitted preparation before cancellation, joins its results with native
-closure and retains every failure except that owner's explicit cancellation.
+shutdown; progress and retry cadence set no failure time. Already-admitted
+preparation and maintenance may finish after shutdown is requested. Owner
+ruling on VO-3843, event 270793, requires no new mechanism to force cancellation
+of that work; existing native owners and joins retain their behavior.
 Hookline acknowledges a frame only on the socket that received it; reconnecting
 cannot transfer that frame's acknowledgment to a replacement socket. Host Codex
 startup and authentication follow native replies or failure, including protocol
@@ -96,9 +97,11 @@ visibility and owner-intent rules. Agent owns the reusable rendering code;
 OA owns its projection and page composition. This adds no runtime or voice
 implementation to OA.
 
-Prepared kit generations bind the selected Agent closure in their existing
-receipt and runtime identity, alongside their native machine selection. A
-candidate cannot substitute an ambient coding program during activation.
+Prepared kit generations record the selected Agent's installed paths and
+existing entry/manifest identity alongside their native machine selection. A
+candidate cannot substitute an ambient coding program during activation. Owner
+ruling 270793 requires no new complete retained Agent closure: rollback depends
+on that selected installation still being available.
 The machine and kit retain their current coordinated reservation, rollback and
 retirement doors. Joint release preparation precedes the one fleet/kit/org
 switch. Existing archived kits and working program pins keep their original
@@ -108,6 +111,12 @@ The shared kit template is the source of installation changes. Volter-org
 receives them through `create-open-autonomy upgrade`, preserving its manager
 profile, role prompts, workflow and agent declaration. Its active start imports the selected kit keeper, so the cutover selects the current source-built keeper and its exact SDK while retaining the older archived kit and SDK bytes. A project-owned archive pin cannot keep the active keeper on the earlier combined program boundary. It keeps no competing
 design record in the installation repository.
+
+Planning notes are seeded adopter content, not kit-owned upgrade output.
+An upgrade never reconstructs a missing roadmap from a retained kanban seed.
+Open Autonomy keeps its planning on the organization's board and therefore
+keeps no root roadmap or changelog. Other skews retain their roadmap templates
+for new installations; existing adopters retain their own planning decisions.
 
 Upgrade ancestors retain their original source declarations. Historical kits
 that declared `@open-autonomy/sdk` as `workspace:*` resolve the SDK from the
@@ -181,8 +190,10 @@ selected from a serving machine graph.
 - [ADR 0031](0031-serving-install-handovers.md): preserves complete immutable
   generations, one writer, preparation before activation, coordinated native
   reservation and rollback, exact serving receipts and host Codex custody.
-  Adds the Agent closure to the existing kit receipt. Machine source ledgers
-  still describe source preparation; they no longer select ordinary kit SDKs.
+  Records Agent's installed selection in the kit receipt, with rollback's
+  availability limit stated above; it adds no complete Agent retention mechanism
+  under owner ruling 270793. Machine source ledgers still describe source
+  preparation; they no longer select ordinary kit SDKs.
 
 ## Alternatives and consequences
 
