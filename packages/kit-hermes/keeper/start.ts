@@ -178,6 +178,9 @@ const helpers = new Map<ReturnType<typeof Bun.spawn>, Promise<unknown>>();
 // Set by a termination signal (or a service ending): from then on this start begins nothing — no service, no restart,
 // no command — and only waits for what it already started to exit.
 let ending = false;
+const lifetime = new AbortController();
+const stopped = new Error('The keeper is stopping');
+const preparing = new Set<Promise<unknown>>();
 let nativeGatewayReady = false, stackConfigured = false;
 const publishKit = (value: Record<string, unknown>) => {
   const file = process.env.OPEN_AUTONOMY_KIT_READY_FILE;
@@ -216,10 +219,11 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
       }, 10_000);
       return;
     }
-    ending = true;
+    ending = true; lifetime.abort(stopped);
     say(`${name} ended (${code}); stopping the rest`);
     for (const child of [...children.map(c => c.proc), ...helpers.keys()]) if (child !== proc && child.exitCode === null && child.signalCode === null) stopWorkChild(child, () => child.kill(), { signal: 'SIGTERM' });
-    await Promise.all([...children.map(c => c.proc.exited), ...helpers.values()]);
+    const joined = await Promise.allSettled([...children.map(c => c.proc.exited), ...helpers.values(), ...preparing]);
+    for (const result of joined) if (result.status === 'rejected' && result.reason !== stopped) console.error(`start: cleanup: ${String(result.reason)}`);
     // the runtime drained on request (Hermes exits 75; the orchestrator, told to stop, exits 0): restart onto main
     await closeWorkLedger(); process.exit(name === 'gateway' && (code === 75 || (restartAsked && code === 0)) ? 75 : 1);
   });
@@ -231,12 +235,14 @@ function spawn(name: string, cmd: string[], opts: { cwd?: string; env?: Record<s
 // orchestrator records each conversation to resume on it), while what SIGHUP means is each program's own.
 for (const sig of stopSignals) process.on(sig, async () => {
   if (ending) return;
-  ending = true;
+  ending = true; lifetime.abort(stopped);
   say(`${sig}: stopping ${children.length} service(s)${helpers.size ? ` and ${helpers.size} command(s) in flight` : ''}; nothing new starts`);
   const live = [...children.map((c) => c.proc), ...helpers.keys()];
   for (const proc of live) if (proc.exitCode === null && proc.signalCode === null) stopWorkChild(proc, () => proc.kill(constants.signals.SIGTERM), { signal: constants.signals.SIGTERM });
-  await Promise.all([...live.map(proc => proc.exited), ...helpers.values()]);
-  await closeWorkLedger(); process.exit(0);
+  const joined = await Promise.allSettled([...live.map(proc => proc.exited), ...helpers.values(), ...preparing]);
+  const failures = joined.filter((result): result is PromiseRejectedResult => result.status === 'rejected' && result.reason !== stopped);
+  for (const failure of failures) console.error(`start: cleanup: ${String(failure.reason)}`);
+  await closeWorkLedger(); process.exit(failures.length ? 1 : 0);
 });
 // The startup's await points: once a signal has arrived, the start goes no further (the handler above exits the process
 // when what it already started has exited). Startup code between two awaits runs whole, so these are the only places a
@@ -324,7 +330,7 @@ process.env.SUPERCODE_CODING_BIN = codingMachine.bin;
 // Fetching can replace the entry, and a changed package.json installs another kit release, so another keeper. Load
 // the landed code before claiming its version is running, rather than continuing the previous one with a new record.
 const reload = async () => {
-  ending = true;
+  ending = true; lifetime.abort(stopped);
   for (const child of children) stopWorkChild(child.proc, () => child.proc.kill(), { signal: 'SIGTERM' });
   await Promise.all(children.map((child) => child.proc.exited));
   await closeWorkLedger(); process.exit(75);
@@ -362,7 +368,7 @@ if (readFileSync(resolve(project, '.open-autonomy/start.ts'), 'utf8') !== loaded
   }
   }
   const keeper = resolve(host, 'node_modules', 'create-open-autonomy', 'keeper', 'start.ts');
-  if (!existsSync(keeper)) { console.error(`start: ${host}/package.json does not install the kit (create-open-autonomy), whose keeper runs this install. No services were started.`); ending = true; for (const c of children) stopWorkChild(c.proc, () => c.proc.kill(), { signal: 'SIGTERM' }); process.exit(1); }
+  if (!existsSync(keeper)) { console.error(`start: ${host}/package.json does not install the kit (create-open-autonomy), whose keeper runs this install. No services were started.`); ending = true; lifetime.abort(stopped); for (const c of children) stopWorkChild(c.proc, () => c.proc.kill(), { signal: 'SIGTERM' }); process.exit(1); }
   if (readFileSync(keeper, 'utf8') !== loadedKeeper) await reload();
 }
 
@@ -455,7 +461,11 @@ if (onCodex && !codexTwin) {
   const proxy = await ensureCodexService({ port: codexPort, directory: resolve(home, '..', 'services'), environment: hostEnvironment });
   codexInstance = proxy.instance;
   say(`Codex proxy :${codexPort} serving independently (pid ${proxy.pid}); board shutdown leaves it running`);
-  await codexAccess();
+  const authentication = codexAccess({ signal: lifetime.signal });
+  preparing.add(authentication);
+  try { await authentication; }
+  catch (error) { if (!ending) throw error; await halted(); }
+  finally { preparing.delete(authentication); }
 }
 await halted();
 // A home that still routes its model through a custom provider at HERMES_CODEX_BASE_URL gets no valve and no
@@ -604,7 +614,7 @@ const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return J
 // nothing makes another in its place; the stop says what init found (a home whose board is on another backing, say).
 const stopStart = (why: string): never => {
   console.error(`start: ${why}; startup stopped`);
-  ending = true;
+  ending = true; lifetime.abort(stopped);
   for (const c of children) stopWorkChild(c.proc, () => c.proc.kill(), { signal: 'SIGTERM' });
   process.exit(1);
 };

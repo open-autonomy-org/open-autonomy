@@ -71,7 +71,7 @@ closure and retains every failure except that owner's explicit cancellation.
 Hookline acknowledges a frame only on the socket that received it; reconnecting
 cannot transfer that frame's acknowledgment to a replacement socket. Host Codex
 startup and authentication follow native replies or failure, including protocol
-EOF while a request is pending, with cancellation joining the owned process.
+EOF while a request is pending, with cancellation joining the owned process. Every startup authentication acquisition takes its stack owner's cancellation signal; shutdown aborts it before joining admitted preparation. The keeper and any adopter-owned bare stack preserve that same ownership. HTTP authentication and refresh use their request's signal, including the upstream response, so a disconnected caller leaves no detached authentication work.
 Owner-control shutdown cancels its reads and submitted mutation observation,
 preserves unknown effects and joins the admitted work
 before its lease can close. Selected runtime calls introduce no default SDK
@@ -132,6 +132,12 @@ The company World's `world/voice.ts`, `world/room-call.mjs` and
 state, model turns and service configuration. Production Room voice stays the
 fleet's delegated session voice through RH2's authorized endpoint. The World's
 DM remains on the installed public `@volter/teams/browser-channel` export.
+
+The dashboard backend selects the current Agent and its public Fleet closure
+from native `sources/supercode-agent` and `sources/supercode-fleet` Git pins
+inside the root pnpm workspace. Historical independent source contexts keep
+their versions through exact version-scoped overrides. No source package is
+selected from a serving machine graph.
 
 ## Existing decisions
 

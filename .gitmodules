@@ -31,3 +31,11 @@
 [submodule "sources/twin-ztrack-development"]
 	path = sources/twin-ztrack-development
 	url = https://github.com/volter-ai/twin.git
+[submodule "sources/supercode-agent"]
+	path = sources/supercode-agent
+	url = https://github.com/volter-ai/supercode-agent.git
+	branch = called-agent-product
+[submodule "sources/supercode-fleet"]
+	path = sources/supercode-fleet
+	url = https://github.com/volter-ai/supercode.git
+	branch = supercode-fleet-boundary

@@ -25,6 +25,22 @@ packages:
   - sources/twin-packs/packages/twin/github
   - sources/twin-packs/packages/twin/polar
   - sources/twin-ztrack-development/packages/twin/jira
+  - sources/supercode-agent/sdk/typescript
+  - sources/supercode-agent/sdk/client
+  - sources/supercode-agent/sdk/ui
+  - sources/supercode-agent/sdk/interchange
+  - sources/supercode-agent/sdk/frontend
+  - sources/supercode-agent/sdk/orchestrator
+  - sources/supercode-fleet/sdk/typescript
+  - sources/supercode-fleet/sdk/interchange
+  - sources/supercode-fleet/sdk/teams
+  - sources/supercode-fleet/sdk/volter-teams
+  - sources/supercode-fleet/sdk/orchestrator
+  - sources/supercode-fleet/sdk/terminal
+  - sources/supercode-fleet/sdk/health
+  - sources/supercode-fleet/sdk/calendar
+  - sources/supercode-fleet/sources/identity/packages/identity
+  - sources/supercode-fleet/sources/ztrack
 # A failed hard link must refuse rather than duplicate a package on this volume.
 nodeLinker: hoisted
 packageImportMethod: hardlink
@@ -38,14 +54,14 @@ overrides:
   undici: ^7.29.0
   sharp: 0.35.5
   source-map-js: 1.2.2
-  '@volter/supercode-harness-sdk': workspace:0.3.64
-  '@volter/supercode-orchestrator': workspace:0.5.47
-  '@volter/supercode-client': workspace:0.3.61
-  '@volter/supercode-ui': workspace:0.1.106
-  '@volter/supercode-terminal': workspace:0.2.30
-  '@volter/teams': workspace:0.2.18
-  '@volter/identity': workspace:0.1.0
-  '@volter/ztrack': workspace:2.5.0
+  '@volter/supercode-harness-sdk@0.3.64': workspace:0.3.64
+  '@volter/supercode-orchestrator@0.5.47': workspace:0.5.47
+  '@volter/supercode-client@0.3.61': workspace:0.3.61
+  '@volter/supercode-ui@0.1.106': workspace:0.1.106
+  '@volter/supercode-terminal@0.2.30': workspace:0.2.30
+  '@volter/teams@0.2.18': workspace:0.2.18
+  '@volter/identity@0.1.0': workspace:0.1.0
+  '@volter/ztrack@2.5.0': workspace:2.5.0
   '@volter/world-runtime': workspace:2.0.8
   '@volter/world-access': workspace:2.0.1
   '@volter/world-ui': workspace:0.1.6
@@ -59,12 +75,18 @@ overrides:
   '@volter/twin-github': workspace:2.0.6
   '@volter/twin-polar': workspace:2.0.6
   '@volter/twin-jira': workspace:2.0.37
-  '@volter/teams>@volter/identity': workspace:0.4.1
+  '@volter/teams@0.2.18>@volter/identity': workspace:0.4.1
   '@volter/supercode-ui>@volter/supercode-client': workspace:0.3.57
-  '@volter/supercode-terminal>@volter/supercode-harness-sdk': workspace:0.3.64
+  '@volter/supercode-terminal@0.2.30>@volter/supercode-harness-sdk': workspace:0.3.64
   '@volter/twin-discord>@volter/world-ui': workspace:0.1.5
   '@volter/twin-openai>@volter/world-ui': workspace:0.1.5
   '@volter/twin-stripe>@volter/world-ui': workspace:0.1.5
+  '@volter/supercode-agent-sdk': workspace:0.3.115
+  '@volter/supercode-agent-client': workspace:0.3.80
+  '@volter/supercode-agent-ui': workspace:0.1.158
+  '@volter/supercode-agent-runtime': workspace:0.1.40
+  '@volter/supercode-agent-frontend': workspace:0.2.14
+  '@volter/supercode-agent-orchestrator': workspace:0.5.232
 allowBuilds:
   '@homebridge/node-pty-prebuilt-multiarch': true
   esbuild: true

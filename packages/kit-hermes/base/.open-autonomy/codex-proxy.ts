@@ -13,7 +13,7 @@ export function serveCodex(port: number, identity?: { binding: string; instance:
     headers.set('ChatGPT-Account-Id', tokens.accountId);
     headers.set('originator', 'codex_cli_rs');
     headers.set('user-agent', 'codex_cli_rs/0.153.2');
-    return responseWork('call', 'codex.upstream', () => fetch(`${upstream}${path}`, { method: req.method, headers, body, redirect: 'manual' }), body?.byteLength);
+    return responseWork('call', 'codex.upstream', () => fetch(`${upstream}${path}`, { method: req.method, headers, body, redirect: 'manual', signal: req.signal }), body?.byteLength);
   };
   return Bun.serve({
     hostname: '127.0.0.1', port, idleTimeout: 255,
@@ -23,18 +23,18 @@ export function serveCodex(port: number, identity?: { binding: string; instance:
       // Readiness identifies this listener without starting an authentication process or disclosing its store.
       if (url.pathname === '/readyz' && identity) return Response.json({ service: 'open-autonomy-codex-proxy', protocol: 1, pid: process.pid, ...identity });
       if (url.pathname === '/healthz') {
-        try { await codexAccess(); return new Response('ok · host Codex login\n'); }
+        try { await codexAccess({ signal: req.signal }); return new Response('ok · host Codex login\n'); }
         catch (error) { return new Response(`unavailable: ${error instanceof Error ? error.message : 'host Codex startup or authentication failed'}\n`, { status: 503 }); }
       }
       if (!url.pathname.startsWith('/backend-api/codex/')) return new Response('not found: the Codex backend lives under /backend-api/codex/\n', { status: 404 });
       try {
         const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.arrayBuffer();
         const path = url.pathname.slice('/backend-api/codex'.length) + url.search;
-        let tokens = await codexAccess();
+        let tokens = await codexAccess({ signal: req.signal });
         let response = await forward(req, path, tokens, body);
         if (response.status === 401) {
           await response.body?.cancel();
-          tokens = await codexAccess({ rejectedToken: tokens.accessToken });
+          tokens = await codexAccess({ rejectedToken: tokens.accessToken, signal: req.signal });
           response = await forward(req, path, tokens, body);
         }
         const headers = new Headers(response.headers);
