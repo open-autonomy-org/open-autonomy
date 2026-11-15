@@ -136,7 +136,7 @@ if (codexArg) {
     headers.set('ChatGPT-Account-Id', tokens.accountId);
     headers.set('originator', 'codex_cli_rs');
     headers.set('user-agent', 'codex_cli_rs/0.153.2');
-    return fetch(`${CODEX_UPSTREAM}${path}`, { method: req.method, headers, body, redirect: 'manual' });
+    return fetch(`${CODEX_UPSTREAM}${path}`, { method: req.method, headers, body, redirect: 'manual', signal: req.signal });
   };
   Bun.serve({
     hostname: '127.0.0.1', port,
@@ -144,15 +144,15 @@ if (codexArg) {
     idleTimeout: 255,
     async fetch(req) {
       const u = new URL(req.url);
-      if (u.pathname === '/healthz') { try { await codexAccess(); return new Response('ok · host Codex login\n'); } catch (error) { return new Response(`unavailable: ${error instanceof Error ? error.message : 'host Codex startup or authentication failed'}\n`, { status: 503 }); } }
+      if (u.pathname === '/healthz') { try { await codexAccess({ signal: req.signal }); return new Response('ok · host Codex login\n'); } catch (error) { return new Response(`unavailable: ${error instanceof Error ? error.message : 'host Codex startup or authentication failed'}\n`, { status: 503 }); } }
       if (!u.pathname.startsWith('/backend-api/codex/')) return new Response('not found: the Codex backend lives under /backend-api/codex/\n', { status: 404 });
       const path = u.pathname.slice('/backend-api/codex'.length) + u.search;
       try {
         // A known-length body avoids chunked uploads rejected by the Codex backend and can be replayed after refresh.
         const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.arrayBuffer();
-        let tokens = await codexAccess();
+        let tokens = await codexAccess({ signal: req.signal });
         let res = await forward(req, path, tokens, body);
-        if (res.status === 401) { await res.body?.cancel(); tokens = await codexAccess({ rejectedToken: tokens.accessToken }); res = await forward(req, path, tokens, body); }
+        if (res.status === 401) { await res.body?.cancel(); tokens = await codexAccess({ rejectedToken: tokens.accessToken, signal: req.signal }); res = await forward(req, path, tokens, body); }
         const out = new Headers(res.headers); for (const h of ['content-encoding', 'content-length', 'transfer-encoding']) out.delete(h);
         return new Response(res.body, { status: res.status, headers: out });
       } catch (e) { return new Response(JSON.stringify({ error: { code: 'codex_unavailable', message: (e as Error).message } }), { status: 502, headers: { 'content-type': 'application/json' } }); }
@@ -262,7 +262,7 @@ for (const { file, port } of githubApps) {
           headers.set('authorization', git ? `Basic ${Buffer.from('x-access-token:' + credential.value).toString('base64')}` : `Bearer ${credential.value}`);
           headers.set('user-agent', 'open-autonomy-valve');
           if (!headers.has('accept')) headers.set('accept', 'application/vnd.github+json');
-          return fetch(`${git ? gitUpstream() : upstream()}${u.pathname}${u.search}`, { method: req.method, headers, body, redirect: 'manual' });
+          return fetch(`${git ? gitUpstream() : upstream()}${u.pathname}${u.search}`, { method: req.method, headers, body, redirect: 'manual', signal: req.signal });
         };
         let res = await forward(t);
         if (res.status === 401) { t = await mint(); res = await forward(t); }

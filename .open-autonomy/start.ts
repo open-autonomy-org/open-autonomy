@@ -132,6 +132,7 @@ const agentEnv = (): Record<string, string> => ({ ...inherited(), AGENT_SECRETS:
 
 const children: Array<{ name: string; proc: ReturnType<typeof Bun.spawn> }> = [];
 let ending = false;
+const lifetime = new AbortController();
 let restartAsked = false;
 let closing: Promise<never> | undefined;
 let mainWatch: ReturnType<typeof setInterval> | undefined;
@@ -148,6 +149,7 @@ function shutdown(code: number): Promise<never> {
   if (closing) return closing;
   ending = true;
   const admitted = [...preparing];
+  lifetime.abort(stopped);
   clearInterval(mainWatch);
   for (const timer of retries) clearTimeout(timer); retries.clear();
   return closing = Promise.resolve().then(async () => {
@@ -295,7 +297,7 @@ const onCodex = agentModels(agentSetup).some((m) => m.provider === 'openai-codex
 const codexPort = valvePort + 2;
 const codexTwin = process.env.HERMES_CODEX_BASE_URL?.trim();
 const codexForward = codexTwin || (onCodex ? `http://127.0.0.1:${codexPort}/backend-api/codex` : undefined);
-if (onCodex && !codexTwin) await hold(() => codexAccess());
+if (onCodex && !codexTwin) await hold(() => codexAccess({ signal: lifetime.signal }));
 // A home that still routes its model through a custom provider at HERMES_CODEX_BASE_URL gets no valve and no
 // address: every run would fail on a connection error, silently. Say so where the operator reads.
 if (!onCodex && !codexTwin && JSON.stringify(agentSetup).includes('HERMES_CODEX_BASE_URL')) console.error('start: the model config expects the Codex valve (HERMES_CODEX_BASE_URL) but names no openai-codex provider; give the named model provider openai-codex in .open-autonomy/agent.json and drop the custom provider, or every run fails to connect');

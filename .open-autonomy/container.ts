@@ -148,7 +148,7 @@ export async function startContainer(options: {
     const onCodex = agentModels(agentSetup).some(model => model?.provider === 'openai-codex');
     // Let native Codex startup finish before starting the fleet; its database
     // maintenance is not an authentication RPC timeout.
-    if (onCodex && !process.env.HERMES_CODEX_BASE_URL?.trim()) await hold(() => codexAccess());
+    if (onCodex && !process.env.HERMES_CODEX_BASE_URL?.trim()) await hold(() => codexAccess({ signal: lifetime.signal }));
     const twin = process.env.HERMES_CODEX_BASE_URL?.trim();
     const codexBase = onCodex ? (twin || `${host}:${port + 2}/backend-api/codex`) : '';
     if (onCodex) await hold(() => prepareContainerSubscription({ container, home, baseUrl: codexBase }));
