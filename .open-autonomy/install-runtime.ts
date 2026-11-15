@@ -2,10 +2,11 @@
 // Install the same version contract from npm, a review registry or exact npm-pack artifacts.
 import type { MachineSupercode } from './machine-supercode.ts';
 import { responseWork, spawnSyncWork, spawnWork } from './work-ledger.ts';
-import { sourceJson, sourceProgram, publishedProgram } from './source-program.ts';
+import { sourceJson, sourceProgram } from './source-program.ts';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 type Options = {
@@ -88,24 +89,18 @@ export function machinePublishedBinding(environment: Record<string, string | und
   if (!named) return null;
   const path = realpathSync(named), receipt = JSON.parse(readFileSync(path, 'utf8'));
   if (path !== resolve(named) || dirname(dirname(path)) !== realpathSync(join(service, 'releases'))
-    || path !== join(dirname(path), 'retained-release.json') || publishedProgram(receipt) === null || !receipt.supports_generations
-    || receipt.root !== join(dirname(path), 'package')) throw new Error('published release receipt is outside this machine retained releases');
-  const manifest = JSON.parse(readFileSync(join(receipt.root, 'package.json'), 'utf8'));
-  if (manifest.name !== '@volter/supercode' || manifest.version !== receipt.release) throw new Error('retained machine release manifest changed');
-  for (const name of ['@volter/supercode-orchestrator', '@volter/supercode-harness-sdk', '@volter/supercode-teams']) {
-    if (!manifest.dependencies?.[name] || JSON.parse(readFileSync(join(receipt.root, 'node_modules', name, 'package.json'), 'utf8')).version !== manifest.dependencies[name])
-      throw new Error(`retained machine release has no exact ${name}`);
-  }
-  const program = publishedProgram(receipt)!;
-  for (const input of [program, receipt.entry, receipt.supervised]) if (typeof input !== 'string' || !realpathSync(input).startsWith(receipt.root + sep)) throw new Error('retained machine input escapes its release');
-  return { ...receipt, program, receipt: path };
+    || path !== join(dirname(path), 'retained-release.json') || receipt.root !== join(dirname(path), 'package'))
+    throw new Error('published release receipt is outside this machine retained releases');
+  const owner = createRequire(join(receipt.root, 'package.json'))('@volter/supercode-teams/release-selection');
+  return owner.readRetainedRelease(path, dirname(service));
 }
 
 function nativeHostWorkspaces(directory: string, environment: Record<string, string | undefined>): Array<{ name: string; version: string; path: string }> {
   directory = realpathSync(directory);
+  const project = realpathSync(resolve(directory, '..'));
   const listed = spawnSyncWork(() => Bun.spawnSync(['pnpm', '--dir', directory, 'list', '-r', '--depth', '-1', '--json'], { env: environment }));
   if (listed.exitCode !== 0) throw new Error(`Cannot read native host source workspaces: ${listed.stderr.toString()}`);
-  return JSON.parse(listed.stdout.toString()).filter((pkg: any) => realpathSync(pkg.path).startsWith(directory + sep));
+  return JSON.parse(listed.stdout.toString()).filter((pkg: any) => realpathSync(pkg.path).startsWith(project + sep));
 }
 
 // pnpm owns dependency resolution. Only the file: packages declared inside the locked source tree need a different
@@ -116,7 +111,7 @@ function sourceLinks(options: Options): Array<{ name: string; target: string }> 
   const declarations = { ...manifest.devDependencies, ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.overrides };
   const workspace = Object.entries(declarations).filter(([, value]) => typeof value === 'string' && value.startsWith('workspace:'));
   // Host-owned source workspaces have their own Git pins. Let native pnpm
-  // select them only beneath this canonical host; the machine's Supercode
+  // select them only beneath this canonical project; the machine's Supercode
   // packages still require its complete graph, even if a local copy exists.
   const local = new Set<string>();
   if (workspace.length && existsSync(join(options.directory, 'pnpm-workspace.yaml'))) {

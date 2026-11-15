@@ -42,7 +42,14 @@ An explicitly named `SUPERCODE_CODING_BIN` source package may declare an exact
 `workspace:<version>` dependency. Only that prefix is normalized: each package
 is resolved from that same selected package and its actual version must match
 the declared exact version. Ordinary installed selection still requires the
-manifest's exact version pin. An explicitly named native packed program may instead declare a `file:` npm archive. The existing native archive reader supplies that archive's own exact package name and version, which must match the dependency resolved from the selected program; npm or pnpm retains archive integrity ownership. A source archive is never compared to a version string or selected from an ambient graph. OA and RH2 source images retain explicitly named,
+manifest's exact version pin. An installed native packed program may instead
+declare a `file:` npm archive. Fleet's public release-selection owner reads the
+installed package's own version and pnpm's selected snapshot and resolved
+integrity, including for private local-main prereleases. The kit delegates
+retained-release reading to that installed public owner; it neither compares
+an archive locator with a version nor unpacks an archive to identify an installed
+dependency. Working older exact pins retain their existing meaning. Explicit
+source/workspace selection keeps its own boundary. OA and RH2 source images retain explicitly named,
 separate Fleet and Agent source contexts; each native workspace is installed
 and built by pnpm. No serving-source inference selects either product.
 
