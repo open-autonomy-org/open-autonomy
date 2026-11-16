@@ -18,9 +18,13 @@ extends ADR 0006's identity rule for source mode; its lineage, ownership and mer
 
 A source render records `sourceRevision`, the full Git commit of its clean owning source checkout, alongside the
 package version, skew and project parameters. Source validation requires the tracked native kit and exact SDK
-from that same checkout, a clean tree and the SDK resolution into that checkout. New source checks compare both
-revision and version. Source upgrades follow the explicitly selected revision regardless of package-version
-ordering. Public-package defaults continue to discover releases and compare versions through the registry.
+from that same checkout, with native SDK resolution into it before rendering. Only recording that identity
+(render/create/adopt or upgrade) requires a clean tree, checked before and after rendering. Import, status, check
+and other development operations allow dirty and untracked working files; check renders without recording a
+revision and reports divergence. New source checks compare both revision and version. Source upgrades follow
+the explicitly selected revision regardless of package-version ordering. Public-package defaults continue to
+discover releases and compare versions through the registry. VO-3843 manager event 281550 clarifies this
+development/recording boundary.
 
 The source cache explicitly retains each recorded revision with its kit and SDK source links. Its directory key
 is the recorded full commit. Older version-only records require an explicit version-keyed cache entry; the entry
@@ -28,13 +32,21 @@ is validated as one clean owning checkout at that version, including both source
 It supplies the otherwise missing source identity. Neither a version match with the current kit nor the registry
 may substitute for that ancestor. A missing, dirty, incomplete or mismatched ancestor refuses before project writes.
 
-An ancestor renders in a private child of the existing Bun runtime with its own validated source root in its
-environment. The parent does not alter its global environment or import historical renderers into its module graph.
-The child returns rendered bytes; only the current engine owns the merge and writes. This isolates same-version,
-newer-version and older-version ancestors alike, including historical engines that enforce source selection.
+Selected target and ancestor source render in a private child of the existing Bun runtime when outside the
+executing kit, with their own validated source root in the environment. The parent does not alter its global
+environment or import historical renderers into its module graph.
+The child returns rendered bytes. Only the current engine stamps the validated target identity, owns the merge
+and writes. Historical renderers need only their existing `render` contract; a renderer exposing the separate
+non-recording path supplies it for check. This isolates same-version, newer-version and older-version source
+alike, including historical engines that enforce source selection.
 
-The kit's source validator owns source identity and cache admission once. Generated maintenance calls that owner
-from the selected source; it does not copy the validator. Maintenance, fleet upgrades, checks and runtime admission
+The kit's source validator owns source identity and cache admission once. Generated maintenance loads that owner
+and CLI from its already installed `create-open-autonomy` package, the same package door its start uses for keeper.
+It does not load new APIs or run upgrade from the selected historical source: that engine may predate revision
+records and could stamp only a package version. The installed engine retains its own installed SDK and source
+closure; it selects the target explicitly inside check/upgrade, and the target renderer runs with its own SDK.
+Maintenance reads source identity before preparation, then verifies SDK resolution after its existing frozen
+dependency preparation. Status needs no prepared SDK. Maintenance, fleet upgrades, checks and runtime admission
 use the same source identity rather than their own version-only shortcuts. Source maintenance discovers its target
 from the selected source, names revision-specific branches, and lets the canonical upgrade validate the ancestor
 before writing. This changes no activation door: idle-gated preparation, retained generations and machine-wide

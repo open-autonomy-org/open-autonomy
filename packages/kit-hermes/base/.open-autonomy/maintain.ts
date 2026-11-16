@@ -4,8 +4,9 @@
 // on a schedule by whoever runs the install (SETUP.md, "Keep the install on main": a launchd or cron job every ten
 // minutes, a project's keep job, a PM's pass): it moves a running install onto main (the keeper performs the restart it
 // asks for and never fetches main itself), and once the stack runs a revision it has not enrolled, runs enroll.ts.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const project = resolve(process.env.OPEN_AUTONOMY_PROJECT_SOURCE ?? resolve(import.meta.dir, '..'));
 const home = process.env.HERMES_HOME;
@@ -180,13 +181,15 @@ if (command === 'ship') {
     else if (enroll.exitCode !== 0) console.log(`enroll.ts did not complete (${enroll.exitCode ?? enroll.signalCode}); the next pass tries again.`);
   }
 } else if (command === 'status' || command === 'upgrade') {
-  // Source identity and ancestor admission belong to the selected kit's source owner (ADR 0036).
+  // The installed kit owns identity, ancestor admission and merging (ADR 0036), as it owns keeper at start.
+  // A selected historical target supplies rendered bytes, not new APIs or an older upgrade implementation.
   // A source revision is selected explicitly, independently of registry release/version ordering.
   const sourceSelected = process.env.OPEN_AUTONOMY_SOURCE_ONLY === '1' || !!process.env.OPEN_AUTONOMY_SOURCE;
   if (sourceSelected && !process.env.OPEN_AUTONOMY_SOURCE?.trim()) throw new Error('kit source mode requires OPEN_AUTONOMY_SOURCE; registry code is never a fallback');
-  const sourceOwner = sourceSelected ? await import(resolve(process.env.OPEN_AUTONOMY_SOURCE!, 'packages/kit-hermes/src/source.ts')) : undefined;
-  const source = sourceOwner?.kitSource(undefined, process.env.OPEN_AUTONOMY_SOURCE);
-  if (source) sourceOwner!.preparedKitSource(source);
+  const kitOwner = sourceSelected ? realpathSync(resolve(import.meta.dir, 'node_modules/create-open-autonomy')) : undefined;
+  const sourceOwner = kitOwner ? await import(pathToFileURL(resolve(kitOwner, 'src/source.ts')).href) : undefined;
+  // Status needs only the source's identity; dependency resolution follows the existing preparation below.
+  const source = sourceOwner?.kitSource(undefined, process.env.OPEN_AUTONOMY_SOURCE, undefined, command === 'upgrade');
   const latest = source?.version ?? run(['pnpm', '--config.nodeLinker=hoisted', 'view', 'create-open-autonomy', 'version']).trim();
   const target = { version: latest, ...(source ? { sourceRevision: source.commit } : {}) };
   const needsUpgrade = (have: ReturnType<typeof record>): boolean => source ? !sourceOwner!.sameKit(have, target) : newer(latest, have.version);
@@ -217,10 +220,10 @@ if (command === 'ship') {
     ...(process.env.OPEN_AUTONOMY_KIT_CACHE ? { OPEN_AUTONOMY_KIT_CACHE: resolve(process.env.OPEN_AUTONOMY_KIT_CACHE) } : {}) } : packageEnv;
   if (source) {
     run([...native, 'install', '--frozen-lockfile'], source.root);
-    sourceOwner!.preparedKitSource(sourceOwner!.kitSource(latest, source.root, source.commit));
+    sourceOwner!.preparedKitSource(sourceOwner!.kitSource(latest, source.root, source.commit, true));
     console.log(`Kit source: create-open-autonomy@${source.version}, @open-autonomy/sdk@${source.sdkVersion}, ${source.root} at ${source.commit}`);
   }
-  const kitCommand = source ? [...native, 'exec', 'bun', source.cli] : [...native, 'dlx', `create-open-autonomy@${latest}`];
+  const kitCommand = source ? [process.execPath, resolve(kitOwner!, 'src/cli.ts')] : [...native, 'dlx', `create-open-autonomy@${latest}`];
   const kitTarget = source ? worktree : '.';
   if (needsUpgrade(staged)) {
     // A three-way merge: exit 2 means files were left marked. The worktree stays for the PM to resolve them in its own
@@ -232,7 +235,7 @@ if (command === 'ship') {
     console.log(said);
   }
   console.log(run([...kitCommand, 'check', kitTarget], kitCwd, kitEnv));
-  if (source) sourceOwner!.preparedKitSource(sourceOwner!.kitSource(latest, source.root, source.commit));
+  if (source) sourceOwner!.preparedKitSource(sourceOwner!.kitSource(latest, source.root, source.commit, true));
   // An upgrade moves only kit-owned files, so the kit's check is its verification. A self-build repository is the
   // kit's own package too (soc2 is self-build with a layer), and its template ships the typecheck that proves the
   // kit's sources still compile.

@@ -107,8 +107,9 @@ permitted (on `origin/main`, named in full as `VOLTER_NPM_RELEASE_COMMIT`), as t
 pushes `publish`, so it deploys nothing (ADR 0033) (`--check` lists what it would
 publish). Before any upload it scans the lockfiles the kit ships (`.github/release-scan.mjs`), packs each version once
 from the files git tracks with git's file modes, installs every tarball fresh and resolves its modules
-(`scripts/npm-verify-tarballs.mjs`), and sweeps every file of it for keys with supercode's
-`scripts/npm-keys-sweep.mjs` at the commit the script pins (gitleaks, every compressed entry opened, the machine's
+(`scripts/npm-verify-tarballs.mjs`), and sweeps every file of it for keys with
+[Supercode's keys sweep](https://github.com/volter-ai/supercode/blob/e392ca8c4b14530874bb770e574ab01413da45f9/scripts/npm-keys-sweep.mjs)
+at the commit the script pins (gitleaks, every compressed entry opened, the machine's
 supercode custody values and `@volter/teams/redact`'s token forms); any failure publishes nothing. Only
 those swept tarballs are uploaded, npm's integrity for each is read back against the file's, and a new kit version is
 recorded as a `release-v<version>` tag and GitHub release. The world proves the same publish and a `bun create
@@ -212,9 +213,12 @@ merge; behind the kit or mid-merge it exits 1. **Seeded** files are written once
 roadmap, historical board seed, the constitution, `CONTRIBUTING.md`, the changelog, `AGENTS.md`, the license, the model config, the publish policy.
 
 Source mode selects the prepared owning Open Autonomy checkout with `OPEN_AUTONOMY_SOURCE` (or runs directly
-from its native kit). Its clean full Git commit is recorded as `sourceRevision`; `check` and `upgrade` use that
-identity even when two revisions share a package version or the selected revision has a lower version. Historical
-source rendering uses that ancestor's own kit and exact SDK in a private Bun process, never the registry.
+from its native kit). Identity-recording operations require a clean tree and record its full Git commit as
+`sourceRevision`; ordinary development commands and `check` allow dirty/untracked files. `check` and `upgrade`
+compare revision and version even when two revisions share a package version or the selected revision has a
+lower version. The installed current engine owns the merge and stamps the target identity. Selected targets
+and historical source outside that engine render with their own kit and exact SDK in a private Bun process,
+never the registry; an older target needs only its existing renderer, not the current engine's new source APIs.
 `OPEN_AUTONOMY_KIT_CACHE` must explicitly link both source packages under the full recorded commit's directory:
 its `node_modules/create-open-autonomy` and `node_modules/@open-autonomy/sdk` links point into the same clean owning
 checkout. A version-only older record instead requires those links under its package version; that validated entry
