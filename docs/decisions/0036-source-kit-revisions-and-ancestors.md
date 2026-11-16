@@ -32,19 +32,23 @@ is validated as one clean owning checkout at that version, including both source
 It supplies the otherwise missing source identity. Neither a version match with the current kit nor the registry
 may substitute for that ancestor. A missing, dirty, incomplete or mismatched ancestor refuses before project writes.
 
-Selected target and ancestor source render in a private child of the existing Bun runtime when outside the
-executing kit, with their own validated source root in the environment. The parent does not alter its global
-environment or import historical renderers into its module graph.
-The child returns rendered bytes. Only the current engine stamps the validated target identity, owns the merge
-and writes. Historical renderers need only their existing `render` contract; a renderer exposing the separate
-non-recording path supplies it for check. This isolates same-version, newer-version and older-version source
-alike, including historical engines that enforce source selection.
+An ancestor renders in a private child of the existing Bun runtime with its own validated source root in the
+environment. The parent does not alter its global environment or import historical renderers into its module graph.
+The child returns rendered bytes; the selected target engine owns recording, migrations, the merge and writes.
+Historical ancestors need only their existing `render` contract; the non-recording renderer is used when available.
+This isolates same-version, newer-version and older-version ancestors, including engines enforcing source selection.
 
 The kit's source validator owns source identity and cache admission once. Generated maintenance loads that owner
-and CLI from its already installed `create-open-autonomy` package, the same package door its start uses for keeper.
-It does not load new APIs or run upgrade from the selected historical source: that engine may predate revision
-records and could stamp only a package version. The installed engine retains its own installed SDK and source
-closure; it selects the target explicitly inside check/upgrade, and the target renderer runs with its own SDK.
+from the selected source and executes that source's native CLI, matching public-package upgrades' target-engine
+ownership. The target's upgrade-time migrations (including ADR 0007's layout migration and configuration repairs)
+must run as well as its renderer. An engine selected by a package-version pin or a different source checkout cannot
+substitute for it. Executing source validates that it is the explicitly selected target and uses its own exact SDK.
+Maintenance checks the source owner's required exports before calling them. A target predating revision support
+refuses clearly, naming its selected commit and revision 92ee6b3ee4b3639e55c4c548ee84f03985873c2c, which introduces
+that capability, or a reviewed descendant providing it. This is a capability requirement, not a package-version
+comparison or Git-ancestry floor. Old source without the capability remains valid as a historical ancestor.
+VO-3843 manager event 281602 sets this target-engine rule.
+
 Maintenance reads source identity before preparation, then verifies SDK resolution after its existing frozen
 dependency preparation. Status needs no prepared SDK. Maintenance, fleet upgrades, checks and runtime admission
 use the same source identity rather than their own version-only shortcuts. Source maintenance discovers its target
@@ -59,7 +63,9 @@ same-version consumers unsafe. Rendering a version-only record with today's engi
 changes. Importing historical code while temporarily replacing process environment races concurrent operations.
 Running a private Bun child costs one process per historical render but preserves that renderer's actual contract
 without a second implementation. Historical version-only cache links remain an operator's explicit ancestry claim;
-the original record cannot prove an identity it never recorded. New records remove that ambiguity.
+the original record cannot prove an identity it never recorded. New records remove that ambiguity. Using a
+different installed engine to merge target-rendered bytes would skip target migrations and reintroduce the
+version-only engine ambiguity. Refusing a target without revision support preserves exact recording instead.
 
 ## Constitution compatibility for independent review
 

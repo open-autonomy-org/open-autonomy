@@ -9,13 +9,13 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { KIT, KIT_FILE, currentKit, render, type KitParams, type Skew } from './kit.ts';
-import { ancestorSource, sameKit, selectedSource, type KitIdentity } from './source.ts';
+import { ancestorSource, sameKit, sourceMode, type KitIdentity } from './source.ts';
 import { renderSource } from './source-render.ts';
 
-export async function ancestor(identity: KitIdentity, params: KitParams, skew: Skew, source = selectedSource()): Promise<Map<string, Buffer>> {
-  const fromSource = !!source || identity.sourceRevision !== undefined;
+export async function ancestor(identity: KitIdentity, params: KitParams, skew: Skew): Promise<Map<string, Buffer>> {
+  const fromSource = sourceMode() || identity.sourceRevision !== undefined;
   const out = fromSource
-    ? sameKit(identity, currentKit(source)) ? render(params, skew, source) : renderSource(ancestorSource(identity.version, identity.sourceRevision), params, skew, true)
+    ? sameKit(identity, currentKit()) ? render(params, skew) : renderSource(ancestorSource(identity.version, identity.sourceRevision), params, skew)
     : identity.version === KIT.version ? render(params, skew) : await renderWith(identity.version, fetchKit(identity.version), params, skew);
   out.delete(KIT_FILE);
   return out;

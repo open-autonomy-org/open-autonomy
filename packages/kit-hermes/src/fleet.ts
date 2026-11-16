@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { KIT, check, currentKit, upgrade } from './kit.ts';
 import { worldConfig } from './world-config.ts';
-import { kitLabel, kitSource, selectedSource, sourceEnvironment } from './source.ts';
+import { kitLabel, sourceEnvironment } from './source.ts';
 
 // create-open-autonomy upgrade --fleet <fleet.json>: every project of a fleet onto this kit, from this kit. Each
 // project is cloned fresh from its origin, upgraded (the same three-way merge as `upgrade`), committed and landed the
@@ -20,8 +20,7 @@ import { kitLabel, kitSource, selectedSource, sourceEnvironment } from './source
 // resolve. Returns whether every project is now on this kit.
 export async function upgradeFleet(file: string): Promise<boolean> {
   const say = (m: string) => console.log(m);
-  const source = selectedSource();
-  if (source) kitSource(source.version, source.root, source.commit, true);
+  const target = currentKit(true);
   const def = JSON.parse(readFileSync(resolve(file), 'utf8')) as { projects?: Array<{ account: string; origin: string }> };
   if (!def.projects?.length) throw new Error(`${file}: no projects`);
   let all = true;
@@ -34,12 +33,12 @@ export async function upgradeFleet(file: string): Promise<boolean> {
     };
     try {
       git('clone', '-q', '--depth', '1', p.origin, '.');
-      const status = check(dir, source), from = kitLabel(status);
+      const status = check(dir), from = kitLabel(status);
       if (status.current) { say(`${p.account}: at ${from}`); rmSync(dir, { recursive: true, force: true }); continue; }
-      const selection = currentKit(source).sourceRevision ?? KIT.version;
+      const selection = target.sourceRevision ?? KIT.version;
       // How this repository lands, read from main as cloned, before the upgrade can touch the landing workflow.
       const branch = existsSync(join(dir, '.github/workflows/land.yml'));
-      const u = await upgrade(dir, source);
+      const u = await upgrade(dir);
       if (u.conflicts.length) {
         all = false;
         say(`${p.account}: ${from} → ${u.to} left ${u.conflicts.length} conflict(s) in ${dir} (${u.conflicts.join(', ')}); resolve, commit and land there`);

@@ -50,9 +50,6 @@ export function kitSource(version: string | undefined, directory: string | undef
   return { root, kit, sdk, cli, version, sdkVersion: expected, commit };
 }
 export type KitSource = ReturnType<typeof kitSource>;
-export function selectedSource(): KitSource | undefined {
-  return sourceMode() ? kitSource(undefined, process.env.OPEN_AUTONOMY_SOURCE ?? layout(resolve(import.meta.dir, '..'))) : undefined;
-}
 export function preparedKitSource(source: ReturnType<typeof kitSource>): string {
   const actual = realpathSync(Bun.resolveSync('@open-autonomy/sdk/package.json', dirname(source.cli)));
   if (actual !== resolve(source.sdk, 'package.json'))
@@ -72,10 +69,12 @@ export function ancestorSource(version: string, sourceRevision?: string) {
   return { ...source, dir };
 }
 export function executingSource(version: string): KitSource | undefined {
+  if (!sourceMode()) return undefined;
   const root = layout(resolve(import.meta.dir, '..'));
-  // The installed engine keeps its own SDK; a separately selected source supplies only its rendered bytes.
-  if (!root) return undefined;
+  if (!root) throw new Error('kit source mode requires the selected source native CLI; an installed package cannot supply its upgrade engine');
   const source = kitSource(version, root);
+  const selectedRoot = process.env.OPEN_AUTONOMY_SOURCE ? realpathSync(resolve(process.env.OPEN_AUTONOMY_SOURCE)) : source.root;
+  if (selectedRoot !== source.root) throw new Error(`executing kit ${source.kit} is outside selected OPEN_AUTONOMY_SOURCE ${selectedRoot}; run that source's native CLI so its upgrade migrations apply`);
   preparedKitSource(source);
   return source;
 }

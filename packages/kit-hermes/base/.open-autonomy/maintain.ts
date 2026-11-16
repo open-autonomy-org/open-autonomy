@@ -181,15 +181,28 @@ if (command === 'ship') {
     else if (enroll.exitCode !== 0) console.log(`enroll.ts did not complete (${enroll.exitCode ?? enroll.signalCode}); the next pass tries again.`);
   }
 } else if (command === 'status' || command === 'upgrade') {
-  // The installed kit owns identity, ancestor admission and merging (ADR 0036), as it owns keeper at start.
-  // A selected historical target supplies rendered bytes, not new APIs or an older upgrade implementation.
-  // A source revision is selected explicitly, independently of registry release/version ordering.
+  // The selected source owns validation and the whole upgrade, including its migrations (ADR 0036).
+  // Target selection is independent of package-version ordering; older ancestors need only their renderer.
   const sourceSelected = process.env.OPEN_AUTONOMY_SOURCE_ONLY === '1' || !!process.env.OPEN_AUTONOMY_SOURCE;
   if (sourceSelected && !process.env.OPEN_AUTONOMY_SOURCE?.trim()) throw new Error('kit source mode requires OPEN_AUTONOMY_SOURCE; registry code is never a fallback');
-  const kitOwner = sourceSelected ? realpathSync(resolve(import.meta.dir, 'node_modules/create-open-autonomy')) : undefined;
-  const sourceOwner = kitOwner ? await import(pathToFileURL(resolve(kitOwner, 'src/source.ts')).href) : undefined;
+  const sourceRoot = sourceSelected ? realpathSync(resolve(process.env.OPEN_AUTONOMY_SOURCE!)) : undefined;
+  let sourceOwner: Record<string, any> | undefined;
+  let selectedRevision: string | undefined;
+  if (sourceRoot) {
+    // Bootstrap only the capability refusal; the source owner below validates the actual kit/SDK identity.
+    const revision = Bun.spawnSync({ cmd: ['git', 'rev-parse', 'HEAD'], cwd: sourceRoot, stdout: 'pipe', stderr: 'pipe', timeout: 10_000 });
+    if (revision.exitCode !== 0) throw new Error(`cannot read selected kit source revision in ${sourceRoot}: ${revision.stderr.toString().trim()}`);
+    selectedRevision = revision.stdout.toString().trim();
+    const required = `kit source ${sourceRoot} at ${selectedRevision} requires revision-recording support introduced by 92ee6b3ee4b3639e55c4c548ee84f03985873c2c or a reviewed source revision providing that capability (ADR 0036); package version cannot select an upgrade engine`;
+    const owner = resolve(sourceRoot, 'packages/kit-hermes/src/source.ts');
+    if (!existsSync(owner)) throw new Error(`${required}: source owner is missing`);
+    try { sourceOwner = await import(pathToFileURL(owner).href); }
+    catch (error) { throw new Error(`${required}: source owner could not load: ${(error as Error).message}`); }
+    const missing = ['kitSource', 'preparedKitSource', 'sameKit', 'kitLabel'].filter(name => typeof sourceOwner![name] !== 'function');
+    if (missing.length) throw new Error(`${required}: missing ${missing.join(', ')}`);
+  }
   // Status needs only the source's identity; dependency resolution follows the existing preparation below.
-  const source = sourceOwner?.kitSource(undefined, process.env.OPEN_AUTONOMY_SOURCE, undefined, command === 'upgrade');
+  const source = sourceOwner?.kitSource(undefined, sourceRoot, selectedRevision, command === 'upgrade');
   const latest = source?.version ?? run(['pnpm', '--config.nodeLinker=hoisted', 'view', 'create-open-autonomy', 'version']).trim();
   const target = { version: latest, ...(source ? { sourceRevision: source.commit } : {}) };
   const needsUpgrade = (have: ReturnType<typeof record>): boolean => source ? !sourceOwner!.sameKit(have, target) : newer(latest, have.version);
@@ -223,7 +236,7 @@ if (command === 'ship') {
     sourceOwner!.preparedKitSource(sourceOwner!.kitSource(latest, source.root, source.commit, true));
     console.log(`Kit source: create-open-autonomy@${source.version}, @open-autonomy/sdk@${source.sdkVersion}, ${source.root} at ${source.commit}`);
   }
-  const kitCommand = source ? [process.execPath, resolve(kitOwner!, 'src/cli.ts')] : [...native, 'dlx', `create-open-autonomy@${latest}`];
+  const kitCommand = source ? [...native, 'exec', 'bun', source.cli] : [...native, 'dlx', `create-open-autonomy@${latest}`];
   const kitTarget = source ? worktree : '.';
   if (needsUpgrade(staged)) {
     // A three-way merge: exit 2 means files were left marked. The worktree stays for the PM to resolve them in its own

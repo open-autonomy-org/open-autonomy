@@ -216,9 +216,11 @@ Source mode selects the prepared owning Open Autonomy checkout with `OPEN_AUTONO
 from its native kit). Identity-recording operations require a clean tree and record its full Git commit as
 `sourceRevision`; ordinary development commands and `check` allow dirty/untracked files. `check` and `upgrade`
 compare revision and version even when two revisions share a package version or the selected revision has a
-lower version. The installed current engine owns the merge and stamps the target identity. Selected targets
-and historical source outside that engine render with their own kit and exact SDK in a private Bun process,
-never the registry; an older target needs only its existing renderer, not the current engine's new source APIs.
+lower version. The selected source's own CLI owns the complete upgrade, including target migrations, merge and
+revision recording, using its own exact SDK. Targets missing revision support refuse with the selected commit
+and the required capability introduced by source revision 92ee6b3ee4b3639e55c4c548ee84f03985873c2c (or a reviewed
+source revision providing it); package version never chooses another engine. Historical ancestors need only
+their renderer and run in a private Bun process with their own source and SDK, never the registry.
 `OPEN_AUTONOMY_KIT_CACHE` must explicitly link both source packages under the full recorded commit's directory:
 its `node_modules/create-open-autonomy` and `node_modules/@open-autonomy/sdk` links point into the same clean owning
 checkout. A version-only older record instead requires those links under its package version; that validated entry

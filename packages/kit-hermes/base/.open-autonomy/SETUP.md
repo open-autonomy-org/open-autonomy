@@ -751,10 +751,13 @@ The kit and its exact declared `@open-autonomy/sdk` must be tracked under the sa
 checkout, without registry discovery or package-version ordering. `status` needs no prepared SDK. For upgrade,
 maintenance prepares the selected workspace with its frozen pnpm lock, hoisted hardlinks and existing lifecycle
 policy, using the cache beside the source volume's native pnpm store, then checks native SDK resolution into that
-checkout. The kit package already installed beside start owns validation, the CLI and
-the merge, just as it owns keeper at start. A selected historical source needs only its existing renderer, not new
-maintenance APIs. The installed engine retains its own SDK; the target renderer runs with its own source and SDK
-in a private Bun child. Source mode never substitutes registry code for a target or ancestor.
+checkout. The selected source supplies validation and its own native CLI, which runs the complete upgrade,
+including that target's layout/configuration migrations, merge and revision recording. An installed engine at
+the same package version cannot substitute. A target without revision support refuses with its selected commit
+and the required capability introduced by source revision 92ee6b3ee4b3639e55c4c548ee84f03985873c2c (or a reviewed
+source revision providing it). This checks source capabilities, without package-version or Git-ancestry ordering.
+Older source remains usable as an ancestor through its renderer. Source mode never substitutes registry code
+for a target or ancestor.
 
 Rendering a new kit record (create, adopt or upgrade) requires a clean source tree and records `sourceRevision`,
 the full Git commit, alongside its package version. Ordinary development commands, including `check`, allow
@@ -775,7 +778,7 @@ in the owning Open Autonomy source for the identity and rendering decision.
 
 Runtime and fleet environment records retain the source-only decision and selected source/cache values.
 Those paths must exist inside the runtime where maintenance runs; the kit does not invent mounts or translate
-host paths. Run the installed kit CLI with the intended host source checkout selected. Before
+host paths. Run the selected source's native CLI with that same host checkout selected. Before
 activation, edit the generated runtime directory's `<runtime>/world.json`: under `runtime.environment.values`, keep
 `OPEN_AUTONOMY_SOURCE_ONLY` as `"1"` and set `OPEN_AUTONOMY_SOURCE` and `OPEN_AUTONOMY_KIT_CACHE` to the owning
 source checkout and historical source-link cache visible to the executor (for example `/work/open-autonomy`).

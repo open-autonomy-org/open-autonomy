@@ -1,12 +1,12 @@
-// Render selected or historical source in its own Bun module graph and SDK environment. The caller owns identity
-// admission and writes; this child returns bytes without changing the parent's environment or running an upgrade.
+// Render a historical ancestor in its own Bun module graph and SDK environment. The selected target owns the
+// upgrade; this child returns ancestor bytes without changing the parent's environment or running migrations.
 import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { KitParams, Skew } from './kit.ts';
 import { kitLabel, kitSource, type KitSource } from './source.ts';
 
-export function renderSource(source: KitSource, params: KitParams, skew: Skew, clean = false): Map<string, Buffer> {
+export function renderSource(source: KitSource, params: KitParams, skew: Skew): Map<string, Buffer> {
   const code = `import { readFileSync } from 'node:fs';
 const { module, params, skew } = JSON.parse(readFileSync(0, 'utf8'));
 const kit = await import(module);
@@ -20,7 +20,7 @@ process.stdout.write(JSON.stringify([...render(params, skew)].map(([path, bytes]
     encoding: 'utf8', timeout: 10_000, maxBuffer: 128 * 1024 * 1024,
   });
   if (result.status !== 0) throw new Error(`kit source ${kitLabel({ version: source.version, sourceRevision: source.commit })} could not render in its own source: ${(result.stderr || result.error?.message || 'no output').trim()}`);
-  kitSource(source.version, source.root, source.commit, clean);
+  kitSource(source.version, source.root, source.commit, true);
   const rows = JSON.parse(result.stdout) as Array<[string, string]>;
   return new Map(rows.map(([path, bytes]) => [path, Buffer.from(bytes, 'base64')]));
 }
