@@ -9,10 +9,10 @@
 //   - Each mail agent's profile folder, a sync root of this machine's Teams connector with its rule (`teams connect --cwd
 //     FOLDER --add-root`), so the sessions it runs there reach Teams wherever the install's layout puts its home: its
 //     Room reads the agent's session from there (supercode docs/guides/teams.md).
-//   - Each mail agent of .open-autonomy/agent.json (supercode docs/adr/0008): declared, its main session opened once in a
-//     pane on this machine and kept across runs (`agent declare --open`).
-//   - An agent explicitly requesting `every_machine`: its instance on each other machine Teams reports online, opened
-//     once by its launch key; that session declares itself its machine's agent of that name.
+//   - Each existing mail agent's supplied metadata (supercode ADR 0008): reconciled without changing its main,
+//     identity or Teams binding. A missing mailbox requires its owner's deliberate native `agent declare --open`.
+//   - An agent requesting `every_machine`: its existing declaration read on each other online machine. Missing
+//     declarations are reported for deliberate setup there; enrollment never opens a local or remote session.
 //   - An agent with `health_alarms`: subscribed, by its retained host agent address, to the machine-health
 //     alarms of this machine and of each other machine Teams reports online (`teams health subscribe --machine`), so a
 //     failure a machine's own records show reaches the same main session (supercode sdk/health).
@@ -21,7 +21,6 @@
 //   bun .open-autonomy/enroll.ts [--project <dir>] [--home <dir>] [--health-only]
 // --health-only reads existing native declarations and retries fleet subscriptions; it opens no sessions or sync roots.
 // OPEN_AUTONOMY_SUPERCODE_BIN names another supercode build (a review or a World), as it does for the start.
-import { Database } from 'bun:sqlite';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, isAbsolute, relative, resolve, sep } from 'node:path';
@@ -55,27 +54,6 @@ async function run(cmd: string[], cwd: string, boundMs = 120_000): Promise<{ ok:
   return { ok: code === 0, out: out.trim(), err: (proc.signalCode ? `${err}\nno answer within ${boundMs / 1000} s` : err).trim() };
 }
 const last = (text: string) => text.split('\n').at(-1) ?? '';
-/** The Teams agent this home declared for a mailbox agent (by its name, else its profile), from the home's own agent store
- * as supercode's orchestrator reads it (`homeAgentId`, sdk/orchestrator/agents.mjs: keys `<Teams origin>/<team>/agent/<name>`
- * and `…/profile/<profile>` under the selected Teams context), never a path guessed from folder names. */
-async function homeAgent(name: string, profile: string, cwd: string): Promise<string | null> {
-  const shown = await run([supercodeBin, 'teams', 'context', 'show', '--json'], cwd);
-  let context: { origin?: string; team_id?: string };
-  try { context = JSON.parse(shown.out); } catch { return null; }
-  const file = resolve(home, 'agent-state.sqlite');
-  if (!context.origin || !context.team_id || !existsSync(file)) return null;
-  // A store the orchestrator holds open read-only: a read it refuses is no agent found, said by the caller.
-  let db: Database;
-  try { db = new Database(file, { readonly: true }); } catch { return null; }
-  try {
-    const at = (key: string): string | null => {
-      const stable = `${context.origin}/${context.team_id}/${key}`;
-      return (db.query('SELECT agent_id FROM agent_declaration_heads WHERE org = ? AND key = ?').get(context.team_id!, stable) as { agent_id?: string } | null)?.agent_id
-        ?? (db.query('SELECT id FROM agent_intents WHERE org = ? AND key = ?').get(context.team_id!, stable) as { id?: string } | null)?.id ?? null;
-    };
-    return (name !== profile ? at(`agent/${name}`) : null) ?? at(`profile/${profile}`);
-  } catch { return null; } finally { db.close(); }
-}
 /** `target` is strictly inside `base` (both real paths): a relative path with no leading `..`, and not absolute (another
  *  drive on Windows). */
 const within = (base: string, target: string): boolean => { const rel = relative(base, target); return rel !== '' && rel.split(sep)[0] !== '..' && !isAbsolute(rel); };
@@ -105,7 +83,7 @@ for (const [name, mailAgent] of Object.entries(setup.agents ?? {})) {
     // The agent's folder by its real path, and only one inside the home's own profiles folder, itself inside the home
     // (both by their real paths): a profile, or profiles/ itself, that links somewhere else would make that folder, and
     // every session ever recorded there, this machine's to share. That one path is what is registered, declared and
-    // opened, so the agent runs exactly in the folder that was registered.
+    // reconciled, so subsequent explicit launches use exactly the folder that was registered.
     const homeReal = realpathSync(home);
     const profilesReal = realpathSync(resolve(home, 'profiles'));
     real = realpathSync(folder);
@@ -148,7 +126,7 @@ for (const [name, mailAgent] of Object.entries(setup.agents ?? {})) {
             && r.backfill?.mode === 'all')?.id;
         }
       } catch (error) {
-        // Unknown is not absent. Do not mutate roots, add a sync rule or open an agent on an unread capture state.
+        // Unknown is not absent. Do not mutate roots, add a sync rule or reconcile an agent on an unread capture state.
         say(`agent ${name}: sync capture is unknown (${String(error)}); no add-root or declaration attempted`);
         failed++;
         continue;
@@ -163,31 +141,19 @@ for (const [name, mailAgent] of Object.entries(setup.agents ?? {})) {
         : `agent ${name}: ${real} is not a Teams sync root, so its sessions do not reach Teams: ${last(rooted.err)}`);
       if (!rule) failed++;
     }
-    declared = await run([supercodeBin, 'agent', 'declare', name, '--open', mailAgent.program ?? 'claude', '--folder', real,
-      '--input', `You are the main session of agent ${name}. Your profile is ${resolve(real, 'AGENTS.md')}: read it now and act as it. Roots addressed to ${name} reach you.`,
+    declared = await run([supercodeBin, 'agent', 'declare', name, '--folder', real,
       ...(mailAgent.program ? ['--harness', mailAgent.program] : []),
-      ...(mailAgent.idle_minutes ? ['--idle-minutes', String(mailAgent.idle_minutes)] : []),
+      ...(mailAgent.idle_minutes !== undefined ? ['--idle-minutes', String(mailAgent.idle_minutes)] : []),
       ...(mailAgent.owners_account_manager ? ['--owners-account-manager'] : [])], real);
   }
   if (!declared.ok) { say(`agent ${name} not declared: ${declared.err}`); failed++; continue; }
   say(declared.out);
-  // The mailbox's main session is its profile's agent's main session in Teams (supercode ADR 0041 decision 1: whose session
-  // it is reaches Teams through the machine), so a Workplace mirrors it as that agent rather than as a plain session
-  // beside it. The address is the declaration's own (`roots go to sc:<machine>:<harness>:<id>.`, whatever follows it).
-  const main = /roots go to sc:[^:\s]+:([a-z][a-z-]*:[^\s]+?)\.(?=\s|$)/.exec(declared.out)?.[1];
-  const profileAgent = await homeAgent(name, mailAgent.profile, real);
-  if (!main) say(`agent ${name}: its declaration named no main session, so none is recorded as its agent's in Teams`);
-  else if (!profileAgent) say(`agent ${name}: this home declared no Teams agent for it or its profile ${mailAgent.profile}, so its main session ${main} is not recorded as one's`);
-  else {
-    const recorded = await run([supercodeBin, 'agent', 'record', '--session', main, '--agent', profileAgent, '--main'], real);
-    say(recorded.ok ? `agent ${name}: its main session ${main} is ${profileAgent}'s main session in Teams` : `agent ${name}: its main session is not recorded as ${profileAgent}'s in Teams: ${last(recorded.err)}`);
-  }
   if (!mailAgent.every_machine && !mailAgent.health_alarms) continue;
   const listed = await run([supercodeBin, 'teams', 'machines', 'list', '--json'], real);
   // this machine, as the declaration just named it (sc:<machine>:agent:<name>)
   const here = /sc:([^:\s]+):agent:/.exec(declared.out)?.[1];
   // Only machines Teams reports online: an enrollment whose machine is gone (an old VM, a retired box) would refuse the
-  // open and spend the server's rate limit on every run.
+  // read and spend the server's rate limit on every run.
   const enrolled = listed.ok ? (JSON.parse(listed.out || '{}').items ?? []) as Array<{ name?: string; connection?: string }> : [];
   // This host under any of its enrolled names, with or without the local DNS suffix.
   const same = (machine: string) => machine.toLowerCase().replace(/\.local$/, '') === String(here ?? '').toLowerCase().replace(/\.local$/, '');
@@ -209,10 +175,18 @@ for (const [name, mailAgent] of Object.entries(setup.agents ?? {})) {
   }
   if (healthOnly || !mailAgent.every_machine) continue;
   for (const machine of machines) {
-    const opened = await run([supercodeBin, 'open', '--on', machine, '--new', mailAgent.program ?? 'claude', '--key', `agent-${name}`, '--cwd', real, '--detach',
-      '--input', `You are agent ${name}'s instance on machine ${machine}. Your profile is ${resolve(real, 'AGENTS.md')}: read it now and act as it. First declare yourself this machine's ${name}: supercode agent declare ${name} --main <your own session id> --folder ${real}.`], real);
-    say(opened.ok ? `agent ${name} on ${machine}: ${last(opened.out)}` : `agent ${name} not opened on ${machine}: ${last(opened.err)}`);
-    if (!opened.ok) failed++;
+    const shown = await run([supercodeBin, 'teams', 'rpc', '--machine', machine, 'harness.v1.agent.show',
+      JSON.stringify({ name, records_only: true })], real);
+    let main: string | undefined;
+    try {
+      const answer = JSON.parse(shown.out) as { code?: number; agents?: Array<{ name?: string; main_session?: string }> };
+      if (answer.code === 0) main = answer.agents?.find((agent) => agent.name === name)?.main_session;
+    } catch { /* An unread record is not a declaration. */ }
+    if (shown.ok && main) say(`agent ${name} on ${machine}: retained main ${main}`);
+    else {
+      say(`agent ${name} on ${machine}: declaration not confirmed (${last(shown.err || shown.out)}). On that machine, open it deliberately: supercode agent declare ${name} --open ${mailAgent.program ?? 'claude'} --folder ${real}`);
+      failed++;
+    }
   }
 }
 process.exit(failed ? 1 : 0);

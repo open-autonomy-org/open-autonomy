@@ -80,14 +80,24 @@ for?".
   24 and 25; Volter's decision record D138 step 8: the keeper only starts and stops processes).
   `agent.json` names each agent with a mailbox under `agents`: the profile its main session runs, its program (`claude`
   or `codex`), its idle time and whether it is the owner's account manager. `.open-autonomy/enroll.ts`, run by the
-  deployer pass once per revision the stack runs (below), runs `supercode agent declare <name>
-  --open <program>`, which opens the main session once in a pane on this machine (headful) and keeps it across runs, and
-  registers the checkout in this machine's workspace map. An agent explicitly requesting `every_machine` (RFC 0022
-  decision 7) also has one instance on each other machine enrolled in the install's Teams context: enroll.ts opens it
-  there once by its launch key (`supercode open --on <machine> --new … --key agent-<name>`), and that session declares
-  itself the machine's agent of that name, so the machine's own mail (its probe's alarms) reaches only it. These acts
-  are Teams' and the machine daemon's to own (D137; D138 step 5), and enroll.ts goes when they do. *(The launch key as the "exactly one" and
-  the session's self-declaration are this record's choices; the profile folder must exist at the same path there.)* An
+  deployer pass once per revision the stack runs (below), reconciles existing mailbox metadata with
+  `supercode agent declare <name> --folder <profile> --harness <program>`, and registers the checkout in this machine's
+  workspace map. Enrollment and its retries carry no launch or main-role-selection intent: they preserve the
+  mailbox's recorded main, Teams binding and the session's immutable ownership and lineage. The owner deliberately
+  bootstraps a missing mailbox through the native `supercode agent declare <name> --open <program> --folder <profile>`
+  door. A missing declaration refuses with that actionable command; a failed revision remains retryable without
+  opening, resuming or replacing a main. An agent requesting `every_machine` (RFC 0022 decision 7) is read through
+  each online machine's native agent-record door. An absent remote declaration is reported for deliberate opening
+  on that machine; periodic enrollment opens no remote command or agent pane. Each machine's own enrollment
+  reconciles its metadata. An agent with health alarms subscribes its retained mailbox address on online machines;
+  `--health-only` reads declarations and reconciles those subscriptions without changing mailbox metadata or roles.
+  These acts are Teams' and the machine daemon's to own (D137; D138 step 5), and enroll.ts goes when they do.
+  The retained Volter-org keeper log read on 2026-11-16 (VO-3843) names the full-enrollment failure for revision
+  `810eae66`: box-maintainer's main `01a14b9d-26b2-7672-93be-a02f5c3f055b` had an end the daemon had not read,
+  so declaration refused a second writer; one pass also reports Teams server backoff for the other profiles.
+  Failure left that revision unrecorded and repeated the template's unconditional `declare --open`. A later
+  enrolled/running pair both read `bcb11f448716b12b01a424777caf05819197a072`; the log does not establish that full
+  enrollment still fails. Retrying enrollment is reconciliation, never the owner's deliberate opening. An
   agent hears a Workplace Room's lines once the Workplace's join command brings it in (runhuman-2 ADR 0063: the
   organization's document for its standing Rooms, Project Rooms for a project's); the start runs no Room channel.
   *(This record's choice: the setup as the place agents are named.)*
@@ -104,7 +114,7 @@ for?".
 ## Consequences
 
 - A `company` install starts with `agent.json` naming its harness, so it is never mistaken for a Hermes project.
-- The Hermes skews, their renders and their upgrades are byte for byte what they were.
+- Hermes skews keep their own home shapes and lifecycle. The shared enrollment contract applies to every skew.
 - Not in this record: Hermes's and OpenClaw's export of an IR home with its loss report, which is Supercode's
   (`supercode orchestration export`); and cost attributed to a card's primary project, which RFC 0021 places in a
   statement published from the owner's side, not in the reporter.
