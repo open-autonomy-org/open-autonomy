@@ -11,8 +11,9 @@ The PM runs an hourly scrum over `ROADMAP.md` (notable present/future intentions
 direction, community input, outside contributions and fleet activity, coordinates human commitments and
 required release review, and queues executable work through Hermes's native kanban. The community desk
 runs every quarter hour and answers people; the dispatcher and review lane handle fleet execution.
-A push opens a PR; native review of its exact head comes before GitHub merges it. Reviewers publish
-their GitHub verdict and confirm landing before completing the task. Changed diffs invalidate approval.
+A push opens a PR; the board independently reviews its exact head and manual evidence. After a pass,
+the author merges that exact reviewed head; a changed head requires a new review. Authors never review
+their own work or bypass independent review. Reviewers confirm landing before completing the task.
 
 `kanban.seed.json` is historical input for migration, no longer replayed at startup. A kit upgrade creates
 missing roadmap notes from that seed without changing an existing roadmap or live board. The first scrum

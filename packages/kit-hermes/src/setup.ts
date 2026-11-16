@@ -172,11 +172,7 @@ function stepGitHub(s: Situation, opts: Opts, st: SetupState): void {
     throw new Error(`${s.account} already exists but this directory has no origin. Clone the existing repository or reconcile this checkout before setup; no remote was changed.`);
   }
   setupGit(s, 'fetch', '-q', 'origin');
-  // The landing workflow arms GitHub's auto-merge on every pull request it opens and lets the required approval
-  // release it; a repository without auto-merge lets no landing through once main requires that approval.
-  const merge = gh(['api', '-X', 'PATCH', `repos/${s.account}`, '-F', 'allow_auto_merge=true']);
-  if (!merge.ok) throw new Error(`Cannot enable auto-merge on ${s.account}: ${merge.err}`);
-  mark(s.dir, st, 'github', `${s.account}, signed in as ${s.login}, auto-merge on`);
+  mark(s.dir, st, 'github', `${s.account}, signed in as ${s.login}`);
 }
 
 function stepDeployKey(s: Situation, opts: Opts, st: SetupState): void {
@@ -225,9 +221,9 @@ function ensureRuleset(s: Situation, body: Record<string, unknown>): void {
 }
 
 function stepOwnerRules(s: Situation, opts: Opts, st: SetupState): void {
-  say('\nRepository policy: PRs merge automatically after independent agent review, including workflow changes. No CODEOWNERS gate; human approval is reserved for release. The setup agent reconciles existing rules before activation.');
+  say('\nRepository policy: the board independently reviews each exact PR head, including workflow changes; the author merges that head after a pass. A changed head needs a new review. No additional GitHub approving-review or CODEOWNERS gate; human approval is reserved for release. The setup agent reconciles existing rules before activation.');
   if (opts.plan) return;
-  ensureRuleset(s, { name: 'main-protected', target: 'branch', enforcement: 'active', bypass_actors: [], conditions: { ref_name: { include: ['refs/heads/main'], exclude: [] } }, rules: [{ type: 'deletion' }, { type: 'non_fast_forward' }, { type: 'pull_request', parameters: { required_approving_review_count: 1, dismiss_stale_reviews_on_push: true, require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false } }] });
+  ensureRuleset(s, { name: 'main-protected', target: 'branch', enforcement: 'active', bypass_actors: [], conditions: { ref_name: { include: ['refs/heads/main'], exclude: [] } }, rules: [{ type: 'deletion' }, { type: 'non_fast_forward' }, { type: 'pull_request', parameters: { required_approving_review_count: 0, dismiss_stale_reviews_on_push: true, require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false } }] });
   mark(s.dir, st, 'owner-rules', 'main-protected ruleset present; effective agent review and release authority require setup-agent verification');
 }
 

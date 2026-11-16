@@ -236,9 +236,11 @@ a board (manage-project and self-build keep them; the others plan on the board):
 memory, which the PM scrum reconciles from sourced input and queues bounded fleet work from.
 The native kanban holds execution tasks; the gateway's dispatcher pulls them down and runs each as
 a worker session (the `develop` skill) that builds it, verifies it where `AGENTS.md` says the project is
-verified, pushes an `agent/<task id>` branch to open a PR and hands off. The native reviewer examines its
-exact head against the constitution, scope and manual evidence, submits a GitHub review and confirms the
-merge before completing the task. GitHub requires approval and dismisses stale approvals on changed diffs.
+verified, pushes an `agent/<task id>` branch to open a PR and hands its exact head and manual evidence
+to the board for independent review against the constitution and scope. That exact-head board review is
+the required review; after it passes, the author merges the exact reviewed head. A changed head requires
+a new review. Authors never review their own work or bypass independent review. The native reviewer
+confirms landing before completing the task; no separate GitHub approving review is required.
 Once an hour the PM reconciles the roadmap, contributions, commitments and release gates (the `pm` skill).
 Sessions admitted by the publication policy appear on the selected server with their settled costs.
 

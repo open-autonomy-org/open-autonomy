@@ -46,15 +46,17 @@ is not done.
    for the needed decision; native reviewers apply the same scope and constitution check to the handoff.
    Commit small, signed as the agent, the task id first in the subject:
    `git commit -s --author="Open Autonomy agent <agent@open-autonomy.org>" -m "<task id>: <what changed>"`.
-6. Push the completed candidate to agent/<task id>. The landing workflow opens its PR and enables
-   auto-merge; GitHub must require an approving review and dismiss stale approvals when the diff changes.
-   Observe the open PR and record its URL and full head SHA. Pushing opens review, not permission to merge.
-   Do not approve your own work, bypass review or merge as the implementer.
+6. Push the completed candidate to agent/<task id>. The landing workflow opens its PR. Observe the open
+   PR and record its URL and full head SHA. Hand that exact head and manual evidence to the board for
+   independent review. The board's independent review at that exact head is the required review; after
+   it passes, merge the exact reviewed head as the author, pinning the merge to that head. A changed head
+   requires a new review. Authors never review their own work or bypass independent review.
 7. Hand off with `kanban_request_review`: name the PR, workspace, branch and full candidate SHA, then
    the manual actions and observed results for every acceptance line and any limitations. Leave the
    workspace intact. Do not name a reviewer; the native lane claims it. Implementers never complete their
    own task. Requested changes are committed and pushed to the same PR without rewriting history, then
-   manually verified and handed back for review. A changed diff requires fresh approval.
+   manually verified and handed back for review. After a pass, report the exact reviewed and merged heads
+   to the board; reviewers confirm landing before completing the task. A changed head requires a new review.
 
 ## Native PR review
 
@@ -69,17 +71,14 @@ the verdict. Verify the code follows the decision and any supersession is explic
 constitutional conflicts or unresolved competing decisions require changes. Neither an ADR status label
 nor a prior instruction file overrides the constitution; acceptance requires this review and merge.
 
-For correctable defects, submit a GitHub REQUEST_CHANGES review and use `kanban_request_changes` with
-concrete findings. For approval, submit a GitHub APPROVE review through the project's own door:
-`bun .open-autonomy/community.ts review <pr> approve <reviewed full SHA> <evidence…>` (or `request-changes`).
-The SHA pins the verdict to the exact head reviewed. This is the review-submission path; there is no other. A native
-approval comment alone does not satisfy GitHub's merge gate. Do not use the PR author's identity to
-approve its own PR, disable protection or claim permission failures are approval. Setup verifies that the
-project's reviewer identity can approve PRs opened by the landing workflow's distinct GitHub Actions identity.
+For correctable defects, use `kanban_request_changes` with concrete findings and the exact reviewed
+head. For a pass, record the independent verdict and exact reviewed head on the board and return the PR
+to its author for merge at that head. The board's independent review is the required review; a separate
+GitHub approving review is not required. Authors never review their own work or bypass independent review.
 
-Observe the merge through GitHub and fetched origin/main, then `kanban_complete` with the PR, reviewed
-SHA and landed evidence. A pending or failed merge is not completion: retain the approval evidence and
-report the concrete blocker. Resume the unchanged approved PR without repeating completed verification.
+Observe the author's merge through GitHub and fetched origin/main, then `kanban_complete` with the PR,
+reviewed SHA and landed evidence. A pending or failed merge is not completion: retain the review evidence
+and report the concrete blocker. Resume the unchanged reviewed PR without repeating completed verification.
 Human release approval remains separate. Older already-merged work still needs honest execution review;
 never claim it had pre-merge approval or reopen it simply to manufacture that history.
 
