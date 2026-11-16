@@ -122,7 +122,7 @@ Shared files connect either layout to the selected backend:
 README.md, CONSTITUTION.md, AGENTS.md, LICENSE   seeded project-owned documentation; additional docs vary by skew
 .open-autonomy/      config.yaml (account, platform, bounds, publish policy), agent.json (runtime setup),
                      publisher.ts, source-events.ts, owner-control.ts, host valve and credential tools, start.ts,
-                     enroll.ts, publication-operator.ts, vendored SDK, kit.json (kit, skew, version and identity)
+                     enroll.ts, publication-operator.ts, vendored SDK, kit.json (kit, skew, version, source revision when applicable, and identity)
 container/           supplied executor/image tooling; its use depends on the selected runtime
 .github/workflows/   supplied landing workflow where the skew includes it
 ```
@@ -204,12 +204,22 @@ activation.
 under `hermes/` or [home/](skews/company/home/) (excluding project skills outside the OA namespace and the Hermes board/webhook seeds),
 `agent.json`, the publisher,
 the key tool, the vendored SDK, `container/`, the landing workflow (self-build) and setup/production guides. A project is a branch of its skew
-(ADR 0006): it may change any of them, and `upgrade` merges the kit's next version into its copy three-way, the render of the version it last
-took (fetched once from the registry into the kit cache, `OPEN_AUTONOMY_KIT_CACHE` or `.cache/open-autonomy/kit` under the home directory) as the ancestor. A file only the project changed keeps the project's; a file
+(ADR 0006): it may change any of them, and `upgrade` merges the kit's next version into its copy three-way, the render of the kit it last took as the ancestor. Public packages are fetched once by version into the kit cache
+(`OPEN_AUTONOMY_KIT_CACHE` or `.cache/open-autonomy/kit` under the home directory). A file only the project changed keeps the project's; a file
 only the kit changed takes the kit's whole; a file both changed merges, and where the same lines moved apart the conflict stays in the file, marked,
 for an agent in the project's own session to resolve before landing. `check` reports the version, the files the project changed and any unresolved
 merge; behind the kit or mid-merge it exits 1. **Seeded** files are written once and never touched again: the README, the
 roadmap, historical board seed, the constitution, `CONTRIBUTING.md`, the changelog, `AGENTS.md`, the license, the model config, the publish policy.
+
+Source mode selects the prepared owning Open Autonomy checkout with `OPEN_AUTONOMY_SOURCE` (or runs directly
+from its native kit). Its clean full Git commit is recorded as `sourceRevision`; `check` and `upgrade` use that
+identity even when two revisions share a package version or the selected revision has a lower version. Historical
+source rendering uses that ancestor's own kit and exact SDK in a private Bun process, never the registry.
+`OPEN_AUTONOMY_KIT_CACHE` must explicitly link both source packages under the full recorded commit's directory:
+its `node_modules/create-open-autonomy` and `node_modules/@open-autonomy/sdk` links point into the same clean owning
+checkout. A version-only older record instead requires those links under its package version; that validated entry
+is the explicit ancestor the old record could not name. A missing or mismatched entry refuses. The source-selection
+and ancestry decision is [ADR 0036](../../docs/decisions/0036-source-kit-revisions-and-ancestors.md).
 
 ## How a Hermes self-build repository runs itself
 
@@ -226,9 +236,10 @@ merge before completing the task. GitHub requires approval and dismisses stale a
 Once an hour the PM reconciles the roadmap, contributions, commitments and release gates (the `pm` skill).
 Sessions admitted by the publication policy appear on the selected server with their settled costs.
 
-The PM's `.open-autonomy/maintain.ts` compares the installed kit with npm, lands upgrades from a separate
+The PM's `.open-autonomy/maintain.ts` compares the installed kit with npm in public-package mode, or with the
+selected exact source revision in source mode, and lands upgrades from a separate
 worktree only while idle (a merge conflict holds the worktree for the PM to resolve, then resumes), lands them the
-way the repository lands changes (a `land/kit-<version>` branch for its landing workflow, or main itself where no
+way the repository lands changes (a `land/kit-<version>` branch (the full commit replaces the version in source mode) for its landing workflow, or main itself where no
 landing workflow stands), and requests a complete stack restart after the upgrade lands. When PM decides the
 Release is ready, `maintain.ts ship` writes its package on the standing Release pull request (`main` → `prod`) and
 mentions the owner there once. The owner's approval and merge of the Release is the one human act that ships.

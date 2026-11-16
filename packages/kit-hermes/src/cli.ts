@@ -14,7 +14,8 @@
 //   create-open-autonomy records init <record-repo>     # the records register in the organization's record repository (records.ts)
 //   create-open-autonomy records estate <record-repo> [--json]  # every record of the estate without an entry (exit 0 at zero)
 import { resolve } from 'node:path';
-import { KIT, adopt, check, create, upgrade, validateParams, validateSkew } from './kit.ts';
+import { kitLabel } from './source.ts';
+import { adopt, check, create, currentKit, upgrade, validateParams, validateSkew } from './kit.ts';
 import { setup, type Door } from './setup.ts';
 import { runtime } from './runtime.ts';
 import { fleet, upgradeFleet } from './fleet.ts';
@@ -61,12 +62,12 @@ try {
     const projects = argv.flatMap((a, i) => (a === '--project' && argv[i + 1] ? [argv[i + 1]] : []));
     fleet(target, { name: flag('--name') ?? '', image: flag('--image') ?? '', projects, provider: flag('--provider'), dockerHost: flag('--docker-host'), memory: flag('--memory'), cpus: flag('--cpus'), prepareVolumes: argv.includes('--prepare-volumes') });
   } else if (verb === 'check') {
-    const s = check(target);
+    const s = check(target), selected = kitLabel(currentKit());
     for (const d of s.diverged) console.log(`  ${d}`);
-    if (s.conflicted.length) { for (const c of s.conflicted) console.error(`${c}: unresolved merge markers`); console.error(`kit ${s.kit} ${KIT.version}: ${target} at ${s.version}, ${s.conflicted.length} file(s) with an unresolved merge`); process.exit(1); }
-    if (s.config.length) { for (const c of s.config) console.error(`.open-autonomy/config.yaml: ${c}`); console.error(`kit ${s.kit} ${KIT.version}: ${target}: fix the project's declarations above`); process.exit(1); }
-    if (!s.current) { console.error(`kit ${s.kit} ${KIT.version}: ${target} at ${s.version}; run \`create-open-autonomy upgrade ${dir}\``); process.exit(1); }
-    console.log(`kit ${s.kit} ${KIT.version}: ${target} at ${s.version}${s.diverged.length ? `, ${s.diverged.length} file(s) diverged` : ', matches'}`);
+    if (s.conflicted.length) { for (const c of s.conflicted) console.error(`${c}: unresolved merge markers`); console.error(`kit ${s.kit} ${selected}: ${target} at ${kitLabel(s)}, ${s.conflicted.length} file(s) with an unresolved merge`); process.exit(1); }
+    if (s.config.length) { for (const c of s.config) console.error(`.open-autonomy/config.yaml: ${c}`); console.error(`kit ${s.kit} ${selected}: ${target}: fix the project's declarations above`); process.exit(1); }
+    if (!s.current) { console.error(`kit ${s.kit} ${selected}: ${target} at ${kitLabel(s)}; run \`create-open-autonomy upgrade ${dir}\``); process.exit(1); }
+    console.log(`kit ${s.kit} ${selected}: ${target} at ${kitLabel(s)}${s.diverged.length ? `, ${s.diverged.length} file(s) diverged` : ', matches'}`);
   } else {
     const u = await upgrade(target);
     console.log(`upgrade: ${target} ${u.from} → ${u.to}: ${u.written.length} taken whole, ${u.merged.length} merged, ${u.kept.length} kept as this project's, ${u.retired.length} retired${u.conflicts.length ? `, ${u.conflicts.length} in conflict` : ''}`);

@@ -26,7 +26,7 @@ import { homedir, platform } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { KIT, check, readKit } from './kit.ts';
 import { worldConfig } from './world-config.ts';
-import { sourceEnvironment } from './source.ts';
+import { kitLabel, sourceEnvironment } from './source.ts';
 
 export interface RuntimeOpts { runtime?: string; secrets?: string; valve: number; provider?: string; dockerHost?: string; prepareVolumes: boolean }
 const say = (m: string) => console.log(m);
@@ -39,8 +39,8 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   if (platform() !== 'darwin') throw new Error('the runtime writes a launchd unit; a systemd unit comes with the first Linux host');
   const rec = readKit(dir);
   const { project, account } = rec.params;
-  if (rec.version !== KIT.version) throw new Error(`${dir} is at kit ${rec.version}; run \`create-open-autonomy upgrade\` and land it before cutting a runtime release of ${KIT.version}`);
   const status = check(dir);
+  if (!status.current) throw new Error(`${dir} is at kit ${kitLabel(rec)}; run \`create-open-autonomy upgrade\` and land it before cutting a runtime release from this kit`);
   if (status.conflicted.length) throw new Error(`an unresolved kit merge in ${status.conflicted.join(', ')}; resolve and land it first`);
   // The host runs the kit's reviewed code. Host code the project changed under .open-autonomy/ or container/ is the
   // project's, not the kit's, and does not enter the trusted release unseen: reconcile it with the kit first. A

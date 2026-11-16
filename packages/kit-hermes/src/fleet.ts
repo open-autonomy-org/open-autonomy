@@ -9,9 +9,9 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { KIT, readKit, upgrade } from './kit.ts';
+import { KIT, check, currentKit, upgrade } from './kit.ts';
 import { worldConfig } from './world-config.ts';
-import { sourceEnvironment } from './source.ts';
+import { kitLabel, sourceEnvironment } from './source.ts';
 
 // create-open-autonomy upgrade --fleet <fleet.json>: every project of a fleet onto this kit, from this kit. Each
 // project is cloned fresh from its origin, upgraded (the same three-way merge as `upgrade`), committed and landed the
@@ -32,8 +32,9 @@ export async function upgradeFleet(file: string): Promise<boolean> {
     };
     try {
       git('clone', '-q', '--depth', '1', p.origin, '.');
-      const from = readKit(dir).version;
-      if (from === KIT.version) { say(`${p.account}: at ${from}`); rmSync(dir, { recursive: true, force: true }); continue; }
+      const status = check(dir), from = kitLabel(status);
+      if (status.current) { say(`${p.account}: at ${from}`); rmSync(dir, { recursive: true, force: true }); continue; }
+      const selection = currentKit().sourceRevision ?? KIT.version;
       // How this repository lands, read from main as cloned, before the upgrade can touch the landing workflow.
       const branch = existsSync(join(dir, '.github/workflows/land.yml'));
       const u = await upgrade(dir);
@@ -44,8 +45,8 @@ export async function upgradeFleet(file: string): Promise<boolean> {
       }
       git('add', '-A');
       git('commit', '-q', '-m', `kit-${u.to}: take the kit upgrade`);
-      git('push', '-q', 'origin', branch ? `HEAD:refs/heads/land/kit-${u.to}` : 'HEAD:main');
-      say(`${p.account}: ${from} → ${u.to}: ${u.written.length} taken whole, ${u.merged.length} merged, ${u.kept.length} kept, ${u.retired.length} retired; ${branch ? `pushed land/kit-${u.to} for its landing workflow` : 'landed on main'}`);
+      git('push', '-q', 'origin', branch ? `HEAD:refs/heads/land/kit-${selection}` : 'HEAD:main');
+      say(`${p.account}: ${from} → ${u.to}: ${u.written.length} taken whole, ${u.merged.length} merged, ${u.kept.length} kept, ${u.retired.length} retired; ${branch ? `pushed land/kit-${selection} for its landing workflow` : 'landed on main'}`);
       for (const k of u.kept) say(`  kept: ${k}`);
       rmSync(dir, { recursive: true, force: true });
     } catch (e) {
