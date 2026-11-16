@@ -6,6 +6,7 @@
 // asks for and never fetches main itself), and once the stack runs a revision it has not enrolled, runs enroll.ts.
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const project = resolve(process.env.OPEN_AUTONOMY_PROJECT_SOURCE ?? resolve(import.meta.dir, '..'));
 const home = process.env.HERMES_HOME;
@@ -36,8 +37,9 @@ const run = (cmd: string[], cwd = project, env = cmd[0] === 'pnpm' ? packageEnv 
   return result.stdout.toString().trim();
 };
 const git = (...args: string[]) => run(['git', ...args]);
-const record = (text: string) => JSON.parse(text) as { version: string; skew?: string; revision?: string };
-const installed = record(readFileSync(resolve(project, '.open-autonomy/kit.json'), 'utf8')).version;
+const record = (text: string) => JSON.parse(text) as { version: string; sourceRevision?: string; skew?: string; revision?: string };
+const installedRecord = record(readFileSync(resolve(project, '.open-autonomy/kit.json'), 'utf8'));
+const installed = installedRecord.version;
 const runningFile = resolve(home, 'running-kit.json');
 const runningRecord = existsSync(runningFile) ? record(readFileSync(runningFile, 'utf8')) : null;
 const running = runningRecord?.version ?? null;
@@ -48,32 +50,6 @@ const newer = (a: string, b: string) => {
   for (let i = 0; i < 3; i++) if (aa[i] !== bb[i]) return aa[i]! > bb[i]!;
   return false;
 };
-
-// The registry discovers releases; only the owner's prepared source runs them.
-// This is Open Autonomy's ordinary workspace layout and Bun bin, not a second resolver.
-function kitSource(version: string, directory: string | undefined) {
-  if (!directory) throw new Error('kit upgrade requires OPEN_AUTONOMY_SOURCE: the selected Open Autonomy source checkout; registry code is never a fallback');
-  const root = realpathSync(resolve(directory));
-  const kit = resolve(root, 'packages/kit-hermes'), sdk = resolve(root, 'packages/sdk');
-  const manifest = JSON.parse(readFileSync(resolve(kit, 'package.json'), 'utf8'));
-  const expected = /^(?:workspace:)?(\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?)$/.exec(manifest.dependencies?.['@open-autonomy/sdk'] ?? '')?.[1];
-  const dependency = JSON.parse(readFileSync(resolve(sdk, 'package.json'), 'utf8'));
-  if (manifest.name !== 'create-open-autonomy' || manifest.version !== version || !expected)
-    throw new Error(`kit source ${kit} must be create-open-autonomy@${version} with an exact SDK dependency; found ${manifest.name}@${manifest.version}`);
-  if (dependency.name !== '@open-autonomy/sdk' || dependency.version !== expected)
-    throw new Error(`kit source SDK ${sdk} must be @open-autonomy/sdk@${expected}; found ${dependency.name}@${dependency.version}`);
-  if (run(['git', 'rev-parse', '--show-toplevel'], root) !== root || realpathSync(kit) !== kit || realpathSync(sdk) !== sdk)
-    throw new Error(`kit source ${root} must be the owning source checkout, with its kit and SDK inside it`);
-  run(['git', 'ls-files', '--error-unmatch', 'packages/kit-hermes/package.json', 'packages/kit-hermes/src/cli.ts', 'packages/sdk/package.json', 'packages/sdk/src/index.ts'], root);
-  const cli = realpathSync(resolve(kit, manifest.bin?.['create-open-autonomy'] ?? ''));
-  if (cli !== resolve(kit, 'src/cli.ts')) throw new Error(`kit source ${kit} must select its native src/cli.ts bin`);
-  return { root, kit, sdk, cli, version, sdkVersion: expected, commit: run(['git', 'rev-parse', 'HEAD'], root) };
-}
-function preparedKitSource(source: ReturnType<typeof kitSource>): void {
-  const actual = realpathSync(Bun.resolveSync('@open-autonomy/sdk/package.json', dirname(source.cli)));
-  if (actual !== resolve(source.sdk, 'package.json'))
-    throw new Error(`kit source ${source.kit} resolves its SDK outside selected source ${source.sdk}: ${actual}`);
-}
 
 // The release package's single-line fields.
 function field(text: string, name: string): string {
@@ -205,36 +181,50 @@ if (command === 'ship') {
     else if (enroll.exitCode !== 0) console.log(`enroll.ts did not complete (${enroll.exitCode ?? enroll.signalCode}); the next pass tries again.`);
   }
 } else if (command === 'status' || command === 'upgrade') {
-  const latest = run(['pnpm', '--config.nodeLinker=hoisted', 'view', 'create-open-autonomy', 'version']).trim();
-  console.log(JSON.stringify({ installed, running, latest }));
-  if (command === 'status' || !newer(latest, installed)) process.exit(0);
-  const source = process.env.OPEN_AUTONOMY_SOURCE_ONLY === '1' || process.env.OPEN_AUTONOMY_SOURCE
-    ? kitSource(latest, process.env.OPEN_AUTONOMY_SOURCE) : undefined;
+  // The selected source owns validation and the whole upgrade, including its migrations (ADR 0036).
+  // Target selection is independent of package-version ordering; older ancestors need only their renderer.
+  const sourceSelected = process.env.OPEN_AUTONOMY_SOURCE_ONLY === '1' || !!process.env.OPEN_AUTONOMY_SOURCE;
+  if (sourceSelected && !process.env.OPEN_AUTONOMY_SOURCE?.trim()) throw new Error('kit source mode requires OPEN_AUTONOMY_SOURCE; registry code is never a fallback');
+  const sourceRoot = sourceSelected ? realpathSync(resolve(process.env.OPEN_AUTONOMY_SOURCE!)) : undefined;
+  let sourceOwner: Record<string, any> | undefined;
+  let selectedRevision: string | undefined;
+  if (sourceRoot) {
+    // Bootstrap only the capability refusal; the source owner below validates the actual kit/SDK identity.
+    const revision = Bun.spawnSync({ cmd: ['git', 'rev-parse', 'HEAD'], cwd: sourceRoot, stdout: 'pipe', stderr: 'pipe', timeout: 10_000 });
+    if (revision.exitCode !== 0) throw new Error(`cannot read selected kit source revision in ${sourceRoot}: ${revision.stderr.toString().trim()}`);
+    selectedRevision = revision.stdout.toString().trim();
+    const required = `kit source ${sourceRoot} at ${selectedRevision} requires revision-recording support introduced by 92ee6b3ee4b3639e55c4c548ee84f03985873c2c or a reviewed source revision providing that capability (ADR 0036); package version cannot select an upgrade engine`;
+    const owner = resolve(sourceRoot, 'packages/kit-hermes/src/source.ts');
+    if (!existsSync(owner)) throw new Error(`${required}: source owner is missing`);
+    try { sourceOwner = await import(pathToFileURL(owner).href); }
+    catch (error) { throw new Error(`${required}: source owner could not load: ${(error as Error).message}`); }
+    const missing = ['kitSource', 'preparedKitSource', 'sameKit', 'kitLabel'].filter(name => typeof sourceOwner![name] !== 'function');
+    if (missing.length) throw new Error(`${required}: missing ${missing.join(', ')}`);
+  }
+  // Status needs only the source's identity; dependency resolution follows the existing preparation below.
+  const source = sourceOwner?.kitSource(undefined, sourceRoot, selectedRevision, command === 'upgrade');
+  const latest = source?.version ?? run(['pnpm', '--config.nodeLinker=hoisted', 'view', 'create-open-autonomy', 'version']).trim();
+  const target = { version: latest, ...(source ? { sourceRevision: source.commit } : {}) };
+  const needsUpgrade = (have: ReturnType<typeof record>): boolean => source ? !sourceOwner!.sameKit(have, target) : newer(latest, have.version);
+  console.log(JSON.stringify({ installed, running, latest, ...(source ? { installedSourceRevision: installedRecord.sourceRevision ?? null, latestSourceRevision: source.commit } : {}) }));
+  if (command === 'status' || !needsUpgrade(installedRecord)) process.exit(0);
   git('fetch', '-q', 'origin', 'main');
-  const landed = record(git('show', 'origin/main:.open-autonomy/kit.json')).version;
-  if (!newer(latest, landed)) { console.log(`Kit ${landed} already landed; request a restart.`); process.exit(0); }
-  const branch = `land/kit-${latest}`;
+  const landed = record(git('show', 'origin/main:.open-autonomy/kit.json'));
+  if (!needsUpgrade(landed)) { console.log(`Kit ${source ? sourceOwner!.kitLabel(landed) : landed.version} already landed; request a restart.`); process.exit(0); }
+  const selection = source?.commit ?? latest;
+  const branch = `land/kit-${selection}`;
   if (git('ls-remote', '--heads', 'origin', branch)) {
     console.log(`Upgrade ${branch} is already pushed.`);
     process.exit(0);
   }
   const parent = resolve(home, 'kit-upgrades');
   mkdirSync(parent, { recursive: true });
-  const worktree = resolve(parent, latest);
+  const worktree = resolve(parent, selection);
   if (existsSync(worktree)) {
     if (run(['git', 'branch', '--show-current'], worktree) !== branch) throw new Error(`${worktree} is not the expected upgrade branch ${branch}`);
     console.log(`Resuming the preserved upgrade at ${worktree}.`);
   } else git('worktree', 'add', '-b', branch, worktree, 'origin/main');
-  const stagedVersion = record(readFileSync(resolve(worktree, '.open-autonomy/kit.json'), 'utf8')).version;
-  if (source && stagedVersion !== latest) {
-    const cache = process.env.OPEN_AUTONOMY_KIT_CACHE;
-    if (!cache) throw new Error(`kit upgrade from ${stagedVersion} requires OPEN_AUTONOMY_KIT_CACHE with that version's kit and SDK source links; registry code is never a fallback`);
-    const ancestor = realpathSync(resolve(cache, stagedVersion, 'node_modules/create-open-autonomy'));
-    const previous = kitSource(stagedVersion, resolve(ancestor, '../..'));
-    if (previous.kit !== ancestor || realpathSync(resolve(cache, stagedVersion, 'node_modules/@open-autonomy/sdk')) !== previous.sdk)
-      throw new Error('kit ancestor cache must link the kit and exact SDK in the same owning source checkout');
-    preparedKitSource(previous);
-  }
+  const staged = record(readFileSync(resolve(worktree, '.open-autonomy/kit.json'), 'utf8'));
   // Native preparation belongs to the selected source's volume and preserves its frozen lifecycle policy.
   const kitCwd = source?.root ?? worktree;
   const cacheDir = resolve(dirname(run(['pnpm', 'store', 'path'], kitCwd)), 'cache');
@@ -243,12 +233,12 @@ if (command === 'ship') {
     ...(process.env.OPEN_AUTONOMY_KIT_CACHE ? { OPEN_AUTONOMY_KIT_CACHE: resolve(process.env.OPEN_AUTONOMY_KIT_CACHE) } : {}) } : packageEnv;
   if (source) {
     run([...native, 'install', '--frozen-lockfile'], source.root);
-    preparedKitSource(kitSource(latest, source.root));
+    sourceOwner!.preparedKitSource(sourceOwner!.kitSource(latest, source.root, source.commit, true));
     console.log(`Kit source: create-open-autonomy@${source.version}, @open-autonomy/sdk@${source.sdkVersion}, ${source.root} at ${source.commit}`);
   }
   const kitCommand = source ? [...native, 'exec', 'bun', source.cli] : [...native, 'dlx', `create-open-autonomy@${latest}`];
   const kitTarget = source ? worktree : '.';
-  if (stagedVersion !== latest) {
+  if (needsUpgrade(staged)) {
     // A three-way merge: exit 2 means files were left marked. The worktree stays for the PM to resolve them in its own
     // session; the next `maintain.ts upgrade` resumes here, and the kit's check below refuses to push a marked file.
     const up = Bun.spawnSync({ cmd: packageCommand([...kitCommand, 'upgrade', kitTarget]), cwd: kitCwd, env: kitEnv, stdout: 'pipe', stderr: 'pipe' });
@@ -258,6 +248,7 @@ if (command === 'ship') {
     console.log(said);
   }
   console.log(run([...kitCommand, 'check', kitTarget], kitCwd, kitEnv));
+  if (source) sourceOwner!.preparedKitSource(sourceOwner!.kitSource(latest, source.root, source.commit, true));
   // An upgrade moves only kit-owned files, so the kit's check is its verification. A self-build repository is the
   // kit's own package too (soc2 is self-build with a layer), and its template ships the typecheck that proves the
   // kit's sources still compile.
@@ -266,7 +257,7 @@ if (command === 'ship') {
     run(['bun', 'run', 'check'], worktree);
   }
   run(['git', 'add', '-A'], worktree);
-  if (run(['git', 'status', '--porcelain'], worktree)) run(['git', '-c', 'core.hooksPath=/dev/null', 'commit', '-s', '--author=Open Autonomy agent <agent@open-autonomy.org>', '-m', `kit-${latest}: take the kit upgrade`], worktree);
+  if (run(['git', 'status', '--porcelain'], worktree)) run(['git', '-c', 'core.hooksPath=/dev/null', 'commit', '-s', '--author=Open Autonomy agent <agent@open-autonomy.org>', '-m', `kit-${selection}: take the kit upgrade`], worktree);
   // Land it the way this repository lands changes, read from main as it stands, never from the upgrade's result: a
   // branch its landing workflow takes, or, where main carries no landing workflow, main itself. An upgrade branch
   // nobody lands is an upgrade that never happens. A rule that refuses the push fails it here, loudly, with the

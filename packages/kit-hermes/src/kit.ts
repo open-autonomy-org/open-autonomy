@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { ancestor } from './ancestor.ts';
-import { executingSource } from './source.ts';
+import { executingSource, kitLabel, kitSource, preparedKitSource, sameKit, type KitIdentity } from './source.ts';
 import { LEGACY_FILES, legacyAgent } from './migrate.ts';
 
 // The kit's version is the package's: one number, in package.json, that a release bumps.
@@ -43,7 +43,7 @@ const BASE = resolve(import.meta.dir, '..', 'base');
 const SKEW_DIR = (skew: Skew): string => resolve(import.meta.dir, '..', 'skews', skew);
 
 export interface KitParams { project: string; account: string }
-export interface KitRecord { kit: KitName; skew: Skew; version: string; params: KitParams }
+export interface KitRecord extends KitIdentity { kit: KitName; skew: Skew; params: KitParams }
 export function validateSkew(s: unknown): Skew {
   if (typeof s !== 'string' || !(SKEWS as readonly string[]).includes(s)) throw new Error(`skew: one of ${SKEWS.join(', ')}`);
   return s as Skew;
@@ -87,7 +87,14 @@ function walk(dir: string, base = dir): string[] {
 // first whose session start carries the session's own harness, which the publisher sends.
 // Refuse to vendor below the floor rather than write a client that fails months later on the host.
 const SDK_MIN = '4.1.0';
-const SDK_PKG = executingSource(KIT.version) ?? Bun.resolveSync('@open-autonomy/sdk/package.json', import.meta.dir);
+const SOURCE = executingSource(KIT.version);
+const SDK_PKG = SOURCE ? resolve(SOURCE.sdk, 'package.json') : Bun.resolveSync('@open-autonomy/sdk/package.json', import.meta.dir);
+export function currentKit(clean = false): KitIdentity {
+  if (!SOURCE) return { version: KIT.version };
+  const source = kitSource(KIT.version, SOURCE.root, SOURCE.commit, clean);
+  preparedKitSource(source);
+  return { version: source.version, sourceRevision: source.commit };
+}
 const SDK_SRC = resolve(dirname(SDK_PKG), 'src');
 const order = (v: string): number[] => v.split('.').map(Number);
 const below = (a: string, b: string): boolean => { const [x, y] = [order(a), order(b)]; for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0); return false; };
@@ -100,7 +107,7 @@ const SDK_FILES = ['client.ts', 'roadmap.ts', 'redaction.ts', 'drivers.ts', 'tea
 // version rendering it, which the host package pins); binary-looking files pass through untouched. A
 // parameter substitution is identical in every render with the same parameters, so it never conflicts in an upgrade;
 // the kit version differs between kits, so its pin moves as any kit change does.
-export function render(params: KitParams, skew: Skew): Map<string, Buffer> {
+function renderInputs(params: KitParams, skew: Skew): Map<string, Buffer> {
   validateParams(params); validateSkew(skew);
   const out = new Map<string, Buffer>();
   const kit = kitOf(skew);
@@ -119,7 +126,23 @@ export function render(params: KitParams, skew: Skew): Map<string, Buffer> {
   }
   // The game skew's doors speak to the services directly and import no SDK, so none is vendored into a game.
   if (!BASE_KEEP[skew]) for (const f of SDK_FILES) out.set(`.open-autonomy/sdk/${f}`, readFileSync(join(SDK_SRC, f)));
-  out.set(KIT_FILE, Buffer.from(record({ kit, skew, version: KIT.version, params })));
+  return out;
+}
+
+// Development checks read the working tree without claiming that its bytes are a committed revision.
+export function renderFiles(params: KitParams, skew: Skew): Map<string, Buffer> {
+  currentKit();
+  const out = renderInputs(params, skew);
+  currentKit();
+  return out;
+}
+
+export function render(params: KitParams, skew: Skew): Map<string, Buffer> {
+  const identity = currentKit(true);
+  const out = renderInputs(params, skew);
+  // Refuse a source move or edits during rendering rather than stamp mixed inputs with one commit.
+  currentKit(true);
+  out.set(KIT_FILE, Buffer.from(record({ kit: kitOf(skew), skew, ...identity, params })));
   return out;
 }
 
@@ -128,16 +151,16 @@ export function readKit(dir: string): KitRecord {
   if (!existsSync(p)) throw new Error(`${p} is missing: not a repository this kit made (create or adopt it first)`);
   const rec = JSON.parse(readFileSync(p, 'utf8')) as Partial<KitRecord>;
   if (!(KITS as readonly string[]).includes(String(rec.kit))) throw new Error(`${p} names kit ${rec.kit}, not one of ${KITS.join(', ')}`);
-  // The version names the ancestor an upgrade fetches from the registry: a release number and nothing else, never a
-  // dependency spec or a path.
+  // Public releases use the package version. Source renders also name the exact clean commit (ADR 0036).
   if (typeof rec.version !== 'string' || !/^\d+\.\d+\.\d+$/.test(rec.version)) throw new Error(`${p} records no kit release version (x.y.z)`);
+  if (rec.sourceRevision !== undefined && (typeof rec.sourceRevision !== 'string' || !/^[0-9a-f]{40}$/.test(rec.sourceRevision))) throw new Error(`${p} sourceRevision must be a full Git commit`);
   // A record older than the skews was made by the one brain there was: it is self-build.
   const skew = validateSkew(rec.skew ?? 'self-build');
   if (kitOf(skew) !== rec.kit) throw new Error(`${p} names kit ${rec.kit}, but skew ${skew} belongs to kit ${kitOf(skew)}`);
-  return { kit: rec.kit as KitName, skew, version: rec.version, params: validateParams(rec.params ?? {}) };
+  return { kit: rec.kit as KitName, skew, version: rec.version, ...(rec.sourceRevision ? { sourceRevision: rec.sourceRevision } : {}), params: validateParams(rec.params ?? {}) };
 }
 function record(rec: KitRecord): string {
-  return `${JSON.stringify({ kit: rec.kit, skew: rec.skew, version: rec.version, params: rec.params } satisfies KitRecord, null, 2)}\n`;
+  return `${JSON.stringify({ kit: rec.kit, skew: rec.skew, version: rec.version, ...(rec.sourceRevision ? { sourceRevision: rec.sourceRevision } : {}), params: rec.params } satisfies KitRecord, null, 2)}\n`;
 }
 
 export interface Outcome { written: string[]; skipped: string[] }
@@ -158,12 +181,13 @@ export function adopt(dir: string, params: KitParams, skew: Skew = 'self-build')
 // edits, a merge's result, a file it removed); which carry an unresolved merge. A project is a branch of its skew
 // (docs/decisions/0006), so divergence is its right and is reported, never an error. An old version and an
 // unresolved merge are.
-export interface Status { kit: KitName; version: string; current: boolean; diverged: string[]; conflicted: string[]; config: string[] }
+export interface Status extends KitIdentity { kit: KitName; current: boolean; diverged: string[]; conflicted: string[]; config: string[] }
 export function check(dir: string): Status {
   const rec = readKit(dir);
   const diverged: string[] = [];
   const conflicted: string[] = [];
-  for (const [rel, want] of render(rec.params, rec.skew)) {
+  const rendered = renderFiles(rec.params, rec.skew);
+  for (const [rel, want] of rendered) {
     if (!isOwned(rel) || rel === KIT_FILE) continue;
     const at = join(dir, rel);
     if (!existsSync(at)) { diverged.push(`${rel}: removed here`); continue; }
@@ -171,7 +195,7 @@ export function check(dir: string): Status {
     if (hasMarkers(have)) conflicted.push(rel);
     else if (!eq(have, want)) diverged.push(`${rel}: changed here`);
   }
-  return { kit: rec.kit, version: rec.version, current: rec.version === KIT.version, diverged, conflicted, config: declarations(dir) };
+  return { kit: rec.kit, version: rec.version, ...(rec.sourceRevision ? { sourceRevision: rec.sourceRevision } : {}), current: sameKit(rec, currentKit()), diverged, conflicted, config: declarations(dir) };
 }
 
 // The project's own declarations in config.yaml: the roster must read, and declared seams (ADR 0008) must use the
@@ -209,12 +233,13 @@ const hasMarkers = (b: Buffer): boolean => !binary(b) && /^<{7} /m.test(b.toStri
 // the merge left behind: the files now embody it, conflicts included, and a rerun refuses until they are resolved.
 export interface Upgrade { from: string; to: string; written: string[]; merged: string[]; kept: string[]; conflicts: string[]; retired: string[] }
 export async function upgrade(dir: string): Promise<Upgrade> {
+  currentKit(true);
   const rec = readKit(dir);
   const before = check(dir);
   if (before.conflicted.length) throw new Error(`unresolved merge markers in ${before.conflicted.join(', ')}: resolve them and commit before upgrading again`);
-  const base = await ancestor(rec.version, rec.params, rec.skew);
+  const base = await ancestor(rec, rec.params, rec.skew);
   const theirs = render(rec.params, rec.skew);
-  const out: Upgrade = { from: rec.version, to: KIT.version, written: [], merged: [], kept: [], conflicts: [], retired: [] };
+  const out: Upgrade = { from: kitLabel(rec), to: kitLabel(JSON.parse(theirs.get(KIT_FILE)!.toString())), written: [], merged: [], kept: [], conflicts: [], retired: [] };
   // The layout change (docs/decisions/0007): a project still carrying its agent setup as Hermes's files gets its
   // .open-autonomy/agent.json derived from them — its own model, settings and jobs, not the kit's defaults — and
   // those files and the seed hook retired. The loop below then leaves agent.json alone this once: the project's
@@ -259,7 +284,7 @@ export async function upgrade(dir: string): Promise<Upgrade> {
     if (b !== undefined && eq(o, b)) { put(at, rel, t); out.written.push(rel); continue; }
     if (b !== undefined && eq(b, t)) { out.kept.push(`${rel}: changed here, unchanged in the kit`); continue; }
     if (binary(o) || binary(t) || (b !== undefined && binary(b))) { out.kept.push(`${rel}: binary, changed here and in the kit; take the kit's by hand`); continue; }
-    const m = merge(rel, o, b ?? Buffer.alloc(0), t, rec.version);
+    const m = merge(rel, o, b ?? Buffer.alloc(0), t, out.from, out.to);
     put(at, rel, m.text);
     (m.clean ? out.merged : out.conflicts).push(rel);
   }
@@ -293,17 +318,17 @@ export async function upgrade(dir: string): Promise<Upgrade> {
     const repaired = policy.replace(/^  private:          # session ids or job names that never publish, whatever their kind\n    - \[\]\n(?=\s*\n)/m, '  private: []       # session IDs, job IDs or job names that never publish\n');
     if (repaired !== policy) { writeFileSync(policyFile, repaired); out.written.push('.open-autonomy/config.yaml'); }
   }
-  writeFileSync(join(dir, KIT_FILE), record({ ...rec, version: KIT.version }));
+  writeFileSync(join(dir, KIT_FILE), theirs.get(KIT_FILE)!);
   return out;
 }
 
-function merge(rel: string, ours: Buffer, base: Buffer, theirs: Buffer, from: string): { clean: boolean; text: Buffer } {
+function merge(rel: string, ours: Buffer, base: Buffer, theirs: Buffer, from: string, to: string): { clean: boolean; text: Buffer } {
   const tmp = mkdtempSync(join(tmpdir(), 'oa-merge-'));
   try {
     const [o, b, t] = ['ours', 'base', 'theirs'].map((n) => join(tmp, n));
     writeFileSync(o, ours); writeFileSync(b, base); writeFileSync(t, theirs);
     // Exit status is the number of conflicts; --diff3 shows the ancestor's lines between the two sides.
-    const r = spawnSync('git', ['merge-file', '-p', '--diff3', '-L', `${rel} (this project)`, '-L', `kit ${from}`, '-L', `kit ${KIT.version}`, o, b, t], { timeout: 30_000 });
+    const r = spawnSync('git', ['merge-file', '-p', '--diff3', '-L', `${rel} (this project)`, '-L', `kit ${from}`, '-L', `kit ${to}`, o, b, t], { timeout: 30_000 });
     if (r.status === null || r.status < 0 || r.status > 127) throw new Error(`git merge-file failed on ${rel}: ${(r.stderr ?? Buffer.alloc(0)).toString().trim()}`);
     return { clean: r.status === 0, text: r.stdout };
   } finally { rmSync(tmp, { recursive: true, force: true }); }

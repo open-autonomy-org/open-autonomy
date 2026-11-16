@@ -24,9 +24,9 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { KIT, check, readKit } from './kit.ts';
+import { check, readKit } from './kit.ts';
 import { worldConfig } from './world-config.ts';
-import { sourceEnvironment } from './source.ts';
+import { kitLabel, sourceEnvironment } from './source.ts';
 
 export interface RuntimeOpts { runtime?: string; secrets?: string; valve: number; provider?: string; dockerHost?: string; prepareVolumes: boolean }
 const say = (m: string) => console.log(m);
@@ -39,8 +39,8 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   if (platform() !== 'darwin') throw new Error('the runtime writes a launchd unit; a systemd unit comes with the first Linux host');
   const rec = readKit(dir);
   const { project, account } = rec.params;
-  if (rec.version !== KIT.version) throw new Error(`${dir} is at kit ${rec.version}; run \`create-open-autonomy upgrade\` and land it before cutting a runtime release of ${KIT.version}`);
   const status = check(dir);
+  if (!status.current) throw new Error(`${dir} is at kit ${kitLabel(rec)}; run \`create-open-autonomy upgrade\` and land it before cutting a runtime release from this kit`);
   if (status.conflicted.length) throw new Error(`an unresolved kit merge in ${status.conflicted.join(', ')}; resolve and land it first`);
   // The host runs the kit's reviewed code. Host code the project changed under .open-autonomy/ or container/ is the
   // project's, not the kit's, and does not enter the trusted release unseen: reconcile it with the kit first. A
@@ -82,7 +82,7 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
     // A new release directory relocates source links: prepare its own native lock through the same graph-aware door.
     const install = run([process.execPath, join(kitDir, 'install-runtime.ts'), '--update-lock'], kitDir, 300_000);
     if (!ok(install)) throw new Error(`runtime dependency preparation in ${kitDir} failed: ${(install.stderr ?? '').trim()}`);
-    writeFileSync(join(release, 'source.json'), `${JSON.stringify({ repository: account, revision: rev, kit: KIT.version }, null, 2)}\n`);
+    writeFileSync(join(release, 'source.json'), `${JSON.stringify({ repository: account, revision: rev, kit: rec.version }, null, 2)}\n`);
     say(`release: ${release}`);
   } else say(`release: ${release} (already cut)`);
   const worldCli = join(dirname(Bun.resolveSync('@volter/world-runtime/package.json', kitDir)), 'src', 'cli.ts');
@@ -158,5 +158,5 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   // kickstart, which restarts the definition it already holds.
   const load = [`launchctl bootout gui/$(id -u)/${label} 2>/dev/null; launchctl bootstrap gui/$(id -u) ${unit}   (first load, and again after every release: launchd holds the unit it read)`];
   say(`runtime: ${runtimeDir}\n  world: ${join(runtimeDir, 'world.json')} (executor ${container} and ${container}-treasurer on ${image}; volumes ${[...volumes, treasurerVolume].join(', ')}${opts.provider ? `; provider ${opts.provider}` : ''})\n  unit: ${unit}${rewrite ? ' (rewritten onto this release)' : ''}\n  valves: ${opts.valve}–${opts.valve + 3} on this host`);
-  say(`start or move the service yourself (this verb never does):\n  ${load.join('\n  ')}\nThe agent reports what runs it (kit ${KIT.version}, this host, the executor image) on its page's Agent tab once up.`);
+  say(`start or move the service yourself (this verb never does):\n  ${load.join('\n  ')}\nThe agent reports what runs it (kit ${kitLabel(rec)}, this host, the executor image) on its page's Agent tab once up.`);
 }

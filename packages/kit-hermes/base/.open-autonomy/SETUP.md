@@ -741,27 +741,44 @@ start: a launchd job with `StartInterval` 600 (or a cron line) running that comm
 
 Public package installations keep the package upgrade default. An installation that runs our source must keep
 `OPEN_AUTONOMY_SOURCE_ONLY=1` in its maintainer and runtime environment, and set `OPEN_AUTONOMY_SOURCE` to the
-owning Open Autonomy checkout at the exact selected kit release. The source-only flag makes a missing source
+owning Open Autonomy checkout at the selected source revision. The source-only flag makes a missing source
 refuse instead of selecting a registry executable. Setting `OPEN_AUTONOMY_SOURCE` also selects source mode.
 This repository's own maintainer and the todo-cli cookbook always require source. Direct execution from the
 kit's `packages/kit-hermes/src` layout selects source mode automatically, even if Git or the SDK is missing.
 
 The kit and its exact declared `@open-autonomy/sdk` must be tracked under the same owning Git checkout at
-`packages/kit-hermes` and `packages/sdk`; the kit's native SDK resolution must reach that SDK. Maintenance
-prepares that workspace with its frozen pnpm lock, hoisted hardlinks and existing lifecycle policy, using the
-cache beside the source volume's native pnpm store, then runs its native Bun CLI with the upgrade target explicit.
-The registry discovers the release version; source mode never executes its kit or SDK as a fallback.
+`packages/kit-hermes` and `packages/sdk`. Source maintenance reads the target version and full commit from that
+checkout, without registry discovery or package-version ordering. `status` needs no prepared SDK. For upgrade,
+maintenance prepares the selected workspace with its frozen pnpm lock, hoisted hardlinks and existing lifecycle
+policy, using the cache beside the source volume's native pnpm store, then checks native SDK resolution into that
+checkout. The selected source supplies validation and its own native CLI, which runs the complete upgrade,
+including that target's layout/configuration migrations, merge and revision recording. An installed engine at
+the same package version cannot substitute. A target without revision support refuses with its selected commit
+and the required capability introduced by source revision 92ee6b3ee4b3639e55c4c548ee84f03985873c2c (or a reviewed
+source revision providing it). This checks source capabilities, without package-version or Git-ancestry ordering.
+Older source remains usable as an ancestor through its renderer. Source mode never substitutes registry code
+for a target or ancestor.
 
-For an older ancestor, set `OPEN_AUTONOMY_KIT_CACHE` to the existing versioned cache and link
-`<cache>/<old-kit-version>/node_modules/create-open-autonomy` to that version's owning `packages/kit-hermes`,
-and `<cache>/<old-kit-version>/node_modules/@open-autonomy/sdk` to its `packages/sdk`. Prepare that historical
-source's native dependencies first. Upgrade and fleet upgrade validate both source links, the kit version, its
-exact SDK version and actual SDK resolution before importing the old renderer; missing or registry-backed
-ancestors refuse without installing a package. The current kit version needs no ancestor import.
+Rendering a new kit record (create, adopt or upgrade) requires a clean source tree and records `sourceRevision`,
+the full Git commit, alongside its package version. Ordinary development commands, including `check`, allow
+dirty and untracked files; check reads the working templates without recording them as a revision. Source checks
+and upgrades compare revision and version, so a different commit at the same version is a different kit, and an
+explicitly selected revision may have a lower package version. Upgrade branches are keyed by target commit.
+
+Set `OPEN_AUTONOMY_KIT_CACHE` to the source ancestry cache. For a record with `sourceRevision`, link
+`<cache>/<full-recorded-commit>/node_modules/create-open-autonomy` to that commit's owning `packages/kit-hermes`,
+and `<cache>/<full-recorded-commit>/node_modules/@open-autonomy/sdk` to its `packages/sdk`. For an older record
+without a revision, use `<cache>/<recorded-kit-version>/node_modules/` with those same two links: this explicit
+entry supplies its missing ancestry identity. Prepare each ancestor's native dependencies first. Upgrade and
+fleet upgrade validate the clean owning checkout, both source links, recorded version/revision and exact SDK
+resolution before rendering the ancestor in its own private Bun child. Missing or mismatched ancestors refuse
+before project writes, without installing a package. A package-version match alone never substitutes today's
+templates for an older source record; only an exact recorded revision match can render locally. See ADR 0036
+in the owning Open Autonomy source for the identity and rendering decision.
 
 Runtime and fleet environment records retain the source-only decision and selected source/cache values.
 Those paths must exist inside the runtime where maintenance runs; the kit does not invent mounts or translate
-host paths. Run the source CLI with the host checkout selected, so its own provenance check can pass. Before
+host paths. Run the selected source's native CLI with that same host checkout selected. Before
 activation, edit the generated runtime directory's `<runtime>/world.json`: under `runtime.environment.values`, keep
 `OPEN_AUTONOMY_SOURCE_ONLY` as `"1"` and set `OPEN_AUTONOMY_SOURCE` and `OPEN_AUTONOMY_KIT_CACHE` to the owning
 source checkout and historical source-link cache visible to the executor (for example `/work/open-autonomy`).

@@ -1,4 +1,4 @@
-// Source mode validates the kit's existing workspace and versioned ancestor links before native code runs.
+// Source mode validates owning revisions and ancestor links; only identity recording requires a clean tree.
 // Published installed packages retain their package default unless source mode is explicitly selected.
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
@@ -12,21 +12,25 @@ export function sourceMode(): boolean {
   return process.env.OPEN_AUTONOMY_SOURCE_ONLY === '1' || !!process.env.OPEN_AUTONOMY_SOURCE || !!layout(resolve(import.meta.dir, '..'));
 }
 export function sourceEnvironment(): Record<string, string> {
-  const selected = sourceMode();
-  return Object.fromEntries(['OPEN_AUTONOMY_SOURCE_ONLY', 'OPEN_AUTONOMY_SOURCE', 'OPEN_AUTONOMY_KIT_CACHE']
-    .flatMap((name) => {
-      const value = process.env[name];
-      return value === undefined ? [] : [[name, selected && name !== 'OPEN_AUTONOMY_SOURCE_ONLY' && value ? resolve(value) : value]];
-    }));
+  const selected = sourceMode(), cache = process.env.OPEN_AUTONOMY_KIT_CACHE;
+  const root = process.env.OPEN_AUTONOMY_SOURCE ?? layout(resolve(import.meta.dir, '..'));
+  return { ...(selected ? { OPEN_AUTONOMY_SOURCE_ONLY: '1', ...(root ? { OPEN_AUTONOMY_SOURCE: resolve(root) } : {}) } : {}),
+    ...(cache === undefined ? {} : { OPEN_AUTONOMY_KIT_CACHE: selected && cache ? resolve(cache) : cache }) };
 }
-export function kitSource(version: string, directory: string | undefined) {
+export interface KitIdentity { version: string; sourceRevision?: string }
+export const kitLabel = (identity: KitIdentity): string => `${identity.version}${identity.sourceRevision ? `@${identity.sourceRevision}` : ''}`;
+export function sameKit(a: KitIdentity, b: KitIdentity): boolean {
+  return a.version === b.version && a.sourceRevision === b.sourceRevision;
+}
+export function kitSource(version: string | undefined, directory: string | undefined, sourceRevision?: string, clean = false) {
   if (!directory?.trim()) throw new Error('kit source mode requires OPEN_AUTONOMY_SOURCE: the selected Open Autonomy source checkout; registry code is never a fallback');
   const root = realpathSync(resolve(directory));
   const kit = resolve(root, 'packages/kit-hermes'), sdk = resolve(root, 'packages/sdk');
   const manifest = JSON.parse(readFileSync(resolve(kit, 'package.json'), 'utf8'));
+  version ??= manifest.version;
   const expected = /^(?:workspace:)?(\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?)$/.exec(manifest.dependencies?.['@open-autonomy/sdk'] ?? '')?.[1];
   const dependency = JSON.parse(readFileSync(resolve(sdk, 'package.json'), 'utf8'));
-  if (manifest.name !== 'create-open-autonomy' || manifest.version !== version || !expected)
+  if (manifest.name !== 'create-open-autonomy' || typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version) || manifest.version !== version || !expected)
     throw new Error(`kit source ${kit} must be create-open-autonomy@${version} with an exact SDK dependency; found ${manifest.name}@${manifest.version}`);
   if (dependency.name !== '@open-autonomy/sdk' || dependency.version !== expected)
     throw new Error(`kit source SDK ${sdk} must be @open-autonomy/sdk@${expected}; found ${dependency.name}@${dependency.version}`);
@@ -40,42 +44,37 @@ export function kitSource(version: string, directory: string | undefined) {
   git('ls-files', '--error-unmatch', 'packages/kit-hermes/package.json', 'packages/kit-hermes/src/cli.ts', 'packages/sdk/package.json', 'packages/sdk/src/index.ts');
   const cli = realpathSync(resolve(kit, manifest.bin?.['create-open-autonomy'] ?? ''));
   if (cli !== resolve(kit, 'src/cli.ts')) throw new Error(`kit source ${kit} must select its native src/cli.ts bin`);
-  return { root, kit, sdk, cli, version, sdkVersion: expected, commit: git('rev-parse', 'HEAD') };
+  if (clean && git('status', '--porcelain', '--untracked-files=normal')) throw new Error(`kit source ${root} must be clean: source identity names an exact committed tree`);
+  const commit = git('rev-parse', 'HEAD');
+  if (sourceRevision && commit !== sourceRevision) throw new Error(`kit source ${root} must remain at ${sourceRevision}; found ${commit}`);
+  return { root, kit, sdk, cli, version, sdkVersion: expected, commit };
 }
+export type KitSource = ReturnType<typeof kitSource>;
 export function preparedKitSource(source: ReturnType<typeof kitSource>): string {
   const actual = realpathSync(Bun.resolveSync('@open-autonomy/sdk/package.json', dirname(source.cli)));
   if (actual !== resolve(source.sdk, 'package.json'))
     throw new Error(`kit source ${source.kit} resolves its SDK outside selected source ${source.sdk}: ${actual}`);
   return actual;
 }
-export function ancestorSource(version: string) {
+export function ancestorSource(version: string, sourceRevision?: string) {
+  if (sourceRevision !== undefined && !/^[0-9a-f]{40}$/.test(sourceRevision)) throw new Error(`invalid kit source revision ${sourceRevision}: expected a full Git commit`);
+  const identity = sourceRevision ?? version;
   const cache = process.env.OPEN_AUTONOMY_KIT_CACHE;
-  if (!cache) throw new Error(`kit source upgrade from ${version} requires OPEN_AUTONOMY_KIT_CACHE with that version's kit and SDK source links; registry code is never a fallback`);
-  const dir = resolve(cache, version), kitLink = resolve(dir, 'node_modules/create-open-autonomy'), sdkLink = resolve(dir, 'node_modules/@open-autonomy/sdk');
+  if (!cache) throw new Error(`kit source upgrade from ${identity} requires OPEN_AUTONOMY_KIT_CACHE with that ancestor's kit and SDK source links; registry code is never a fallback`);
+  const dir = resolve(cache, identity), kitLink = resolve(dir, 'node_modules/create-open-autonomy'), sdkLink = resolve(dir, 'node_modules/@open-autonomy/sdk');
   if (!lstatSync(kitLink).isSymbolicLink() || !lstatSync(sdkLink).isSymbolicLink()) throw new Error(`kit ancestor ${dir} must link its owning kit and SDK source`);
-  const kit = realpathSync(kitLink), source = kitSource(version, resolve(kit, '../..'));
+  const kit = realpathSync(kitLink), source = kitSource(version, resolve(kit, '../..'), sourceRevision, true);
   if (source.kit !== kit || realpathSync(sdkLink) !== source.sdk) throw new Error(`kit ancestor ${dir} must link the kit and exact SDK in the same owning source checkout`);
   preparedKitSource(source);
   return { ...source, dir };
 }
-export function executingSource(version: string): string | undefined {
+export function executingSource(version: string): KitSource | undefined {
   if (!sourceMode()) return undefined;
   const root = layout(resolve(import.meta.dir, '..'));
-  // An installed registry package is never a substitute for the selected source, even at the same version.
-  if (!root) throw new Error('kit source mode requires execution from the owning packages/kit-hermes source; registry code is never a fallback');
+  if (!root) throw new Error('kit source mode requires the selected source native CLI; an installed package cannot supply its upgrade engine');
   const source = kitSource(version, root);
   const selectedRoot = process.env.OPEN_AUTONOMY_SOURCE ? realpathSync(resolve(process.env.OPEN_AUTONOMY_SOURCE)) : source.root;
-  if (selectedRoot !== source.root) {
-    // A historical renderer may itself enforce source mode. Only its already validated, versioned source-cache
-    // link permits that import, only for an older renderer; keep the selected current source for subsequent upgrades.
-    const selectedVersion = JSON.parse(readFileSync(resolve(selectedRoot, 'packages/kit-hermes/package.json'), 'utf8')).version;
-    kitSource(selectedVersion, selectedRoot);
-    if (Bun.semver.order(version, selectedVersion) >= 0 || ancestorSource(version).kit !== source.kit)
-      throw new Error(`executing kit ${source.kit} is outside selected OPEN_AUTONOMY_SOURCE ${process.env.OPEN_AUTONOMY_SOURCE}`);
-  }
-  const sdk = preparedKitSource(source);
-  process.env.OPEN_AUTONOMY_SOURCE_ONLY = '1';
-  process.env.OPEN_AUTONOMY_SOURCE = selectedRoot;
-  if (process.env.OPEN_AUTONOMY_KIT_CACHE) process.env.OPEN_AUTONOMY_KIT_CACHE = resolve(process.env.OPEN_AUTONOMY_KIT_CACHE);
-  return sdk;
+  if (selectedRoot !== source.root) throw new Error(`executing kit ${source.kit} is outside selected OPEN_AUTONOMY_SOURCE ${selectedRoot}; run that source's native CLI so its upgrade migrations apply`);
+  preparedKitSource(source);
+  return source;
 }
