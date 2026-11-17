@@ -1,8 +1,8 @@
 // A prepared generation contains its entire committed tree, independent of its caller's sparse checkout.
-import { accessSync, constants, existsSync, lstatSync, mkdirSync, readlinkSync, renameSync } from 'node:fs';
+import { accessSync, constants, existsSync, lstatSync, mkdirSync, readdirSync, readlinkSync, renameSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { spawnSyncWork } from './work-ledger.ts';
 
 type Entry = { mode: string; revision: string; path: string };
@@ -73,8 +73,8 @@ function submoduleNames(project: string, revision: string, prefix: string): Map<
 // submodule repository, so neither is used. Retirement reads only the generations directory and never removes a store.
 // A store is cloned once into a sibling that is renamed into place: an interrupted clone is never taken for a store,
 // and when concurrent preparations both clone, the first rename wins and the other copy is discarded. When it lacks
-// the commit a generation needs, that exact commit is fetched into a ref of its own, with the remote's tags, under
-// git's own ref locks, which wait for a concurrent fetch instead of failing. Anything else at a store's path is refused
+// the commit a generation needs, that exact commit is fetched into a ref of its own (no tags: a tag moved upstream
+// would refuse the fetch), under git's own ref locks, which wait for a concurrent fetch instead of failing. Anything else at a store's path is refused
 // as found, never fetched into.
 async function keepStore(project: string, entry: Entry, name: string, stores: string, run: Run): Promise<string> {
   // Native init registers the gitlink's URL as update --init would, resolving a relative one against its superproject.
@@ -84,7 +84,17 @@ async function keepStore(project: string, entry: Entry, name: string, stores: st
   const store = join(stores, `${plain}-${createHash('sha256').update(url).digest('hex').slice(0, 16)}.git`);
   if (!existsSync(store)) {
     mkdirSync(stores, { recursive: true });
-    const partial = `${store}.partial-${randomUUID()}`;
+    // A partial clone is named by the preparation that writes it (its pid). One whose preparation has ended is left
+    // from an interruption and nothing writes it any more, so it is removed; a live or unreadable pid keeps it.
+    const prefix = `${basename(store)}.partial-`;
+    for (const leftover of readdirSync(stores)) {
+      if (!leftover.startsWith(prefix)) continue;
+      const pid = Number(leftover.slice(prefix.length).split('-', 1)[0]);
+      if (!Number.isSafeInteger(pid) || pid <= 0 || pid === process.pid) continue;
+      try { process.kill(pid, 0); continue; } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') continue; }
+      await rm(join(stores, leftover), { recursive: true, force: true });
+    }
+    const partial = `${store}.partial-${process.pid}-${randomUUID()}`;
     try {
       await run(['git', 'clone', '--quiet', '--bare', '--', url, partial], project);
       try { renameSync(partial, store); } catch (error) { if (!existsSync(store)) throw error; }
@@ -95,7 +105,7 @@ async function keepStore(project: string, entry: Entry, name: string, stores: st
   if (bare !== 'true' || origin !== url) throw new Error(`${store} is not a bare clone of this gitlink's URL; it was left as found`);
   const held = await run(['git', '--git-dir', store, 'cat-file', '-e', `${entry.revision}^{commit}`], project).then(() => true, () => false);
   if (!held) await run(['git', '--git-dir', store, '-c', 'core.filesRefLockTimeout=60000', '-c', 'core.packedRefsTimeout=60000',
-    'fetch', '--quiet', '--tags', '--no-write-fetch-head', 'origin', `${entry.revision}:refs/gitlinks/${entry.revision}`], project);
+    'fetch', '--quiet', '--no-write-fetch-head', 'origin', `${entry.revision}:refs/gitlinks/${entry.revision}`], project);
   return store;
 }
 // Each gitlink is cloned borrowing its long-lived store's objects (keepStore) and dissociated from it, so the
