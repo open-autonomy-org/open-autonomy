@@ -114,7 +114,7 @@ export async function prepareInstall({ project, home, revision, source = null, r
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   // A failed preparation stays for diagnosis until the next activation finishes. Preparation itself deletes, rewrites
   // or checks out no existing generation.
-  await checkoutCompleteSource(project, snapshot, commit, run);
+  await checkoutCompleteSource(project, snapshot, commit, run, resolve(home, '..', 'submodule-stores'));
   const host = resolve(snapshot, '.open-autonomy');
   if (archive) {
     const copied = resolve(directory, statSync(archive).isDirectory() ? 'artifacts' : 'runtime.tgz');
