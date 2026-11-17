@@ -13,7 +13,8 @@ board's rules miss. Each mechanical act you do by hand marks a missing board rul
 3. **Keep work moving.** Work around a missing door or build it. A session uses `heartbeat --until <time|duration>` to
    record its run's bounded wait; dependency blocks and pauses remain the manager's. A working session requests each
    ready PR's review at its exact pushed head while coding and other tasks
-   continue, then merges it at that reviewed head after its independent pass. The board starts the arc's one final
+   continue, then merges it at that reviewed head after its independent pass with
+   `gh pr merge <pr> --merge --match-head-commit <reviewed-sha>`. The board starts the arc's one final
    review of the remaining work and Acceptance after its tasks close. Only P0 and P1 findings hold a merge.
 4. **Drafts are the account manager's; their promotion is yours.** A draft is a card blocked by the account manager's
    message to you. Ask your questions as card comments. Your reply in the draft's thread is the promotion and nothing

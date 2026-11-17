@@ -158,7 +158,7 @@ verbs:
       description: "Pass the ready PR at its reviewed head; the arc's other tasks and Acceptance may remain open."
       target: running
       actions:
-        - end_run: { outcome: pr_review_passed, summary: "PR review passed at {{event.reviewed_sha ?? 'the reviewed head'}}: merge this PR at its reviewed head now, then keep coding. {{event.reason}}" }
+        - end_run: { outcome: pr_review_passed, summary: "PR review passed at {{event.reviewed_sha ?? 'the reviewed head'}}: merge this PR at its reviewed head with gh pr merge --match-head-commit <reviewed-sha> now, then keep coding. {{event.reason}}" }
         - reset: [failures, block_recurrences]
         - assign: { field: assignee, value: "{{card.implementer}}" }
         - record: { kind: pr_review_pass, payload: { reason: "{{event.reason}}", evidence: "{{event.evidence}}", requester: "{{requester}}", reviewed_sha: "{{event.reviewed_sha}}" } }
@@ -195,7 +195,7 @@ verbs:
     - from: [running]
       by: [implementer, reviewer, auditor, arc, creator, manager]
       guard: "(event.review == 'pr') && (card.subtask_of == null && card.every == null) && (!card.review_only) && ((event.reviewer ?? params.reviewer_profile) in lanes) && ((event.reviewer ?? params.reviewer_profile) != params.org_layer) && ((event.reviewer ?? params.reviewer_profile) != card.assignee)"
-      description: "A PR review, whenever one PR is ready: request-review <arc> --pr <its URL> --pr-head <its pushed head> [--summary \"<what the PR does>\"]. Your tasks and Acceptance may remain open while you keep coding; a pass returns the arc to you to merge that PR at its reviewed head now. Review requests during another review follow it. Only the board requests the final review."
+      description: "A PR review, whenever one PR is ready: request-review <arc> --pr <its URL> --pr-head <its pushed head> [--summary \"<what the PR does>\"]. Your tasks and Acceptance may remain open while you keep coding; a pass returns the arc to you to merge that PR at its reviewed head with gh pr merge --match-head-commit <reviewed-sha> now. Review requests during another review follow it. Only the board requests the final review."
       target: review
       actions:
         - end_run: { outcome: pr_review_requested, summary: "Requested the PR review of {{event.pr[0] ?? event.pr}}{{event.summary != null ? ': ' + event.summary : ''}}. Keep coding.", close_session: false }
@@ -384,7 +384,7 @@ notify:
     completed: "{{card.subtask_of == null ? 'Arc ' + card.id + ' accepted: ' + card.title : ''}}"
     audited: "Audit round on {{card.id}}: {{event.summary}}"
   worker:
-    pr_review_pass: "PR REVIEW PASSED for {{card.title}} ({{card.id}}) at {{event.reviewed_sha}}: merge this PR at its reviewed head now, then keep coding.\n{{event.evidence}}"
+    pr_review_pass: "PR REVIEW PASSED for {{card.title}} ({{card.id}}) at {{event.reviewed_sha}}: merge this PR at its reviewed head with gh pr merge --match-head-commit <reviewed-sha> now, then keep coding.\n{{event.evidence}}"
     run_changed: "{{card.id}}: {{event.verb}} changed run {{run.id}} ({{event.from}} → {{event.to}}). {{card.blocked_by.size() > 0 ? 'Keep this session open and idle until its named dependencies clear.' : 'Follow the board state before continuing.'}} {{event.reason ?? ''}}"
     commented: "{{card.id}}, {{event.author}}:\n{{comment.body}}"
     specified: "Card updated: {{card.title}} ({{card.id}}), by {{event.author}}. Read the current brief: supercode workflow show {{card.id}} {{where}}"
