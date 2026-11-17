@@ -47,7 +47,7 @@ import { initializeWorkLedger, closeWorkLedger, startWork, measureWork, spawnSyn
 import type { Setup } from '../base/.open-autonomy/agent.ts';
 import { machineSupercode, machineNode } from '../base/.open-autonomy/machine-supercode.ts';
 import { serveInstallOwner } from './install-owner.ts';
-import { acquireBoard, boardDeclaration, boardOwnerAnswers, retainedBoard } from './retained-board.ts';
+import { acquireBoard, BOARD_READ_MS, boardDeclaration, boardOwnerAnswers, retainedBoard } from './retained-board.ts';
 import { readInstall } from '../base/.open-autonomy/prepare-install.ts';
 import { ensureCodexService } from './codex-service-client.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
@@ -609,7 +609,13 @@ const stopStart = (why: string): never => {
   process.exit(1);
 };
 const boardOptions = { home, entry: orchestratorBin, native: supercodeBin, env: { ...agentEnv(), SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, command: drop };
-const servingBoard = prepared && onNative && existsSync(resolve(home, 'workflow.yaml')) ? await retainedBoard(boardOptions) : null;
+// A start's read of the board's owner is a bounded kit command of its own (BOARD_READ_MS), published so the keeper's
+// readiness watch waits for it; the start's next phase has its usual eight seconds after it.
+const boardRead = async <T>(read: () => Promise<T>): Promise<T> => {
+  publishKit({ progress: 'kit-command', command: 'board-read', deadline_ms: Date.now() + BOARD_READ_MS + 5000 });
+  try { return await read(); } finally { publishKit({ progress: 'starting', deadline_ms: Date.now() + 8000 }); }
+};
+const servingBoard = prepared && onNative && existsSync(resolve(home, 'workflow.yaml')) ? await boardRead(() => retainedBoard(boardOptions)) : null;
 const boardSetup = (Bun.YAML.parse(readFileSync(resolve(project, '.open-autonomy', 'config.yaml'), 'utf8')) as { board?: { document?: unknown; archive?: { max_lines?: unknown; period?: unknown } } } | null)?.board;
 if (typeof boardSetup?.document === 'string' && onNative && existsSync(resolve(home, 'workflow.yaml'))) {
   const checkout = resolve(home, '..', 'board');
@@ -637,7 +643,7 @@ if (typeof boardSetup?.document === 'string' && onNative && existsSync(resolve(h
   // The declared document as supercode's ztrack backing records it: beneath its folder's real path.
   const document = (() => { const named = resolve(checkout, boardSetup.document); try { return resolve(realpathSync(dirname(named)), basename(named)); } catch { return named; } })();
   const declared = async (how: string) => {
-    const observed = await boardDeclaration(boardOptions);
+    const observed = await boardRead(() => boardDeclaration(boardOptions));
     if (observed.backing !== 'ztrack' || resolve(observed.declared?.document ?? '/') !== document)
       stopStart('the retained board differs from the repository declaration');
     say(`board: ${how} native owner and declared ztrack backing`);

@@ -7,6 +7,10 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 type Options = { home: string; entry: string; native: string; env: Record<string, string>; command: (args: string[]) => string[] };
+// A board read is answered by the board's owner, and that answer can wait behind a dispatch round holding the board's
+// event loop: the owner keeps the connection open until it answers (@volter/teams/board-owner). Each read is bounded as
+// the owner's own start is (acquireBoard), never by a shorter cut that turns a busy board into a failed kit stack.
+export const BOARD_READ_MS = 120000;
 async function door(options: Options) {
   const require = createRequire(options.entry);
   const module = await import(pathToFileURL(require.resolve('@volter/teams/board-owner')).href);
@@ -16,7 +20,7 @@ async function door(options: Options) {
   return async (argv: string[]) => {
     const finish = startWork('call', 'keeper.board');
     try {
-      const answer = await module.askBoardOwner(options.home, { argv, facts }, { waitMs: 0, timeoutMs: 8000 });
+      const answer = await module.askBoardOwner(options.home, { argv, facts }, { waitMs: 0, timeoutMs: BOARD_READ_MS });
       finish({ ok: answer.code === 0 && !answer.unanswered }); return answer;
     } catch (error) { finish({ ok: false }); throw error; }
   };
