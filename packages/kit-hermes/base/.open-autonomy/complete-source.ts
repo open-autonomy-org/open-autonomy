@@ -1,6 +1,8 @@
 // A prepared generation contains its entire committed tree, independent of its caller's sparse checkout.
-import { accessSync, constants, lstatSync, readlinkSync } from 'node:fs';
-import { join } from 'node:path';
+import { accessSync, constants, existsSync, lstatSync, mkdirSync, readdirSync, readlinkSync, renameSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { basename, join } from 'node:path';
 import { spawnSyncWork } from './work-ledger.ts';
 
 type Entry = { mode: string; revision: string; path: string };
@@ -55,7 +57,60 @@ function assertTree(project: string, revision: string, prefix: string): void {
 /** Shared preparation/admission guard; complete historical snapshots need no new receipt version. */
 export function assertCompleteSource(project: string, revision: string): void { assertTree(project, revision, ''); }
 
-async function populate(project: string, revision: string, prefix: string, run: Run): Promise<void> {
+// Each gitlink's submodule name, as .gitmodules registers it; git keeps a submodule's own repository under that name.
+function submoduleNames(project: string, revision: string, prefix: string): Map<string, string> {
+  const names = new Map<string, string>();
+  const records = git(project, ['config', '-z', '-f', '.gitmodules', '--get-regexp', '^submodule\\..*\\.path$'], prefix || '.', revision).split('\0');
+  for (const record of records) {
+    const at = record.indexOf('\n');
+    if (at > 0) names.set(record.slice(at + 1), record.slice('submodule.'.length, at - '.path'.length));
+  }
+  return names;
+}
+// Long-lived reference stores of submodule objects: one bare clone per gitlink URL (git's form for a repository that
+// only holds objects and refs, with no working tree) in `stores`, a kit-owned directory beside the generations. Git
+// defines no location for a reference-only store, and its own modules/<name> is the long-lived checkout's real
+// submodule repository, so neither is used. Retirement reads only the generations directory and never removes a store.
+// A store is cloned once into a sibling that is renamed into place: an interrupted clone is never taken for a store,
+// and when concurrent preparations both clone, the first rename wins and the other copy is discarded. When it lacks
+// the commit a generation needs, that exact commit is fetched into a ref of its own (no tags: a tag moved upstream
+// would refuse the fetch), under git's own ref locks, which wait for a concurrent fetch instead of failing. Anything else at a store's path is refused
+// as found, never fetched into.
+async function keepStore(project: string, entry: Entry, name: string, stores: string, run: Run): Promise<string> {
+  // Native init registers the gitlink's URL as update --init would, resolving a relative one against its superproject.
+  await run(['git', ...complete, 'submodule', 'init', '--', `:(literal)${entry.path}`], project);
+  const url = await run(['git', 'config', '--get', `submodule.${name}.url`], project);
+  const plain = (url.replace(/\/+$/u, '').split(/[/:]/u).pop() ?? '').replace(/\.git$/u, '').replace(/[^A-Za-z0-9._-]/gu, '') || 'submodule';
+  const store = join(stores, `${plain}-${createHash('sha256').update(url).digest('hex').slice(0, 16)}.git`);
+  if (!existsSync(store)) {
+    mkdirSync(stores, { recursive: true });
+    // A partial clone is named by the preparation that writes it (its pid). One whose preparation has ended is left
+    // from an interruption and nothing writes it any more, so it is removed; a live or unreadable pid keeps it.
+    const prefix = `${basename(store)}.partial-`;
+    for (const leftover of readdirSync(stores)) {
+      if (!leftover.startsWith(prefix)) continue;
+      const pid = Number(leftover.slice(prefix.length).split('-', 1)[0]);
+      if (!Number.isSafeInteger(pid) || pid <= 0 || pid === process.pid) continue;
+      try { process.kill(pid, 0); continue; } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') continue; }
+      await rm(join(stores, leftover), { recursive: true, force: true });
+    }
+    const partial = `${store}.partial-${process.pid}-${randomUUID()}`;
+    try {
+      await run(['git', 'clone', '--quiet', '--bare', '--', url, partial], project);
+      try { renameSync(partial, store); } catch (error) { if (!existsSync(store)) throw error; }
+    } finally { await rm(partial, { recursive: true, force: true }); }
+  }
+  const bare = await run(['git', '--git-dir', store, 'rev-parse', '--is-bare-repository'], project).catch(() => '');
+  const origin = bare === 'true' ? await run(['git', '--git-dir', store, 'config', '--get', 'remote.origin.url'], project).catch(() => '') : '';
+  if (bare !== 'true' || origin !== url) throw new Error(`${store} is not a bare clone of this gitlink's URL; it was left as found`);
+  const held = await run(['git', '--git-dir', store, 'cat-file', '-e', `${entry.revision}^{commit}`], project).then(() => true, () => false);
+  if (!held) await run(['git', '--git-dir', store, '-c', 'core.filesRefLockTimeout=60000', '-c', 'core.packedRefsTimeout=60000',
+    'fetch', '--quiet', '--no-write-fetch-head', 'origin', `${entry.revision}:refs/gitlinks/${entry.revision}`], project);
+  return store;
+}
+// Each gitlink is cloned borrowing its long-lived store's objects (keepStore) and dissociated from it, so the
+// generation never depends on the store afterwards and fetches only what the store lacks.
+async function populate(project: string, revision: string, prefix: string, run: Run, stores: string): Promise<void> {
   const inventory = entries(project, revision, prefix);
   try { await run(['git', ...complete, 'read-tree', '--reset', '-u', '--no-sparse-checkout', revision], project); }
   catch (cause) {
@@ -67,19 +122,23 @@ async function populate(project: string, revision: string, prefix: string, run: 
     }
     throw refused(prefix || '.', revision, cause);
   }
+  const names = inventory.some(entry => entry.mode === '160000') ? submoduleNames(project, revision, prefix) : new Map<string, string>();
   for (const entry of inventory) {
     if (entry.mode !== '160000') { requireEntry(project, entry, revision, prefix); continue; }
-    const relative = prefix + entry.path;
+    const relative = prefix + entry.path, name = names.get(entry.path);
     try {
+      if (!name) throw new Error('.gitmodules registers no submodule at this path');
+      const store = await keepStore(project, entry, name, stores, run);
       // Native init retains its normal URL registration; only the owned checkout's sparse behavior is overridden.
-      await run(['git', ...complete, 'submodule', 'update', '--init', '--checkout', '--', `:(literal)${entry.path}`], project);
-      await populate(join(project, entry.path), entry.revision, relative + '/', run);
+      await run(['git', ...complete, 'submodule', 'update', '--init', '--checkout', '--reference', store, '--dissociate', '--', `:(literal)${entry.path}`], project);
+      await populate(join(project, entry.path), entry.revision, relative + '/', run, stores);
     } catch (cause) { throw refused(relative, entry.revision, cause); }
   }
 }
-export async function checkoutCompleteSource(project: string, snapshot: string, revision: string, run: Run): Promise<void> {
+/** `stores` holds the long-lived reference stores of submodule objects (keepStore). */
+export async function checkoutCompleteSource(project: string, snapshot: string, revision: string, run: Run, stores: string): Promise<void> {
   try { await run(['git', 'worktree', 'add', '--detach', '--no-checkout', snapshot, revision], project); }
   catch (cause) { throw refused('.', revision, cause); }
-  await populate(snapshot, revision, '', run);
+  await populate(snapshot, revision, '', run, stores);
   assertCompleteSource(snapshot, revision);
 }
