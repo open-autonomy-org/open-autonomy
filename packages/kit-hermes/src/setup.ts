@@ -221,7 +221,7 @@ function ensureRuleset(s: Situation, body: Record<string, unknown>): void {
 }
 
 function stepOwnerRules(s: Situation, opts: Opts, st: SetupState): void {
-  say('\nRepository policy: the board independently reviews each exact PR head, including workflow changes; the author merges that head after a pass. A changed head needs a new review. No additional GitHub approving-review or CODEOWNERS gate; human approval is reserved for release. The setup agent reconciles existing rules before activation.');
+  say('\nRepository policy: the board independently reviews each exact PR head, including workflow changes; the author merges that head after a pass with `gh pr merge <pr> --merge --match-head-commit <reviewed-sha>`. A changed head needs a new review. No additional GitHub approving-review or CODEOWNERS gate; human approval is reserved for release. The setup agent reconciles existing rules before activation.');
   if (opts.plan) return;
   ensureRuleset(s, { name: 'main-protected', target: 'branch', enforcement: 'active', bypass_actors: [], conditions: { ref_name: { include: ['refs/heads/main'], exclude: [] } }, rules: [{ type: 'deletion' }, { type: 'non_fast_forward' }, { type: 'pull_request', parameters: { required_approving_review_count: 0, dismiss_stale_reviews_on_push: true, require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false } }] });
   mark(s.dir, st, 'owner-rules', 'main-protected ruleset present; effective agent review and release authority require setup-agent verification');
@@ -232,8 +232,8 @@ function stepProduction(s: Situation, opts: Opts, st: SetupState): void {
   say(`\nProduction door: a \`prod\` branch that moves only when you approve and merge the standing Release pull request from main, an \`owners\` team (you) as its required reviewer, a \`production\` environment that admits \`prod\` alone, and the Cloudflare token as that environment's one secret.`);
   if (opts.plan) return;
   const login = run(['gh', 'api', 'user', '--jq', '.login']).out.trim();
-  // The Release's reviewer: a team of the owner alone, so the project's App (which reviews pull requests into main)
-  // can never approve it. A personal repository has no teams; setup already requires an organization.
+  // The Release's reviewer is a team of the owner alone; the project's App can never approve it.
+  // A personal repository has no teams; setup already requires an organization.
   let team = gh(['api', `orgs/${s.owner}/teams/owners`]).json as { id?: number } | undefined;
   if (!team?.id) team = gh(['api', '-X', 'POST', `orgs/${s.owner}/teams`], { name: 'owners', privacy: 'closed', description: 'Approves the Release: main to prod' }).json as { id?: number } | undefined;
   if (!team?.id) throw new Error(`Cannot create the owners team in ${s.owner}; an organization owner must run setup.`);

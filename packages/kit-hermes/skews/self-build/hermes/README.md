@@ -12,7 +12,8 @@ direction, community input, outside contributions and fleet activity, coordinate
 required release review, and queues executable work through Hermes's native kanban. The community desk
 runs every quarter hour and answers people; the dispatcher and review lane handle fleet execution.
 A push opens a PR; the board independently reviews its exact head and manual evidence. After a pass,
-the author merges that exact reviewed head; a changed head requires a new review. Authors never review
+the author merges that exact reviewed head with
+`gh pr merge <pr> --merge --match-head-commit <reviewed-sha>`; a changed head requires a new review. Authors never review
 their own work or bypass independent review. Reviewers confirm landing before completing the task.
 
 `kanban.seed.json` is historical input for migration, no longer replayed at startup. A kit upgrade creates

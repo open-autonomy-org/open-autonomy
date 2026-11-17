@@ -594,8 +594,8 @@ missing permissions together, and accept the update on the existing installation
 do not upgrade an installation until accepted. Reuse the App, installation and protected credential;
 no reinstall or key replacement is needed. Record the verified grant in the existing setup record.
 Verify the first real contribution can push, receive independent board review at its exact head, and be
-merged by its author at that reviewed head
-before declaring setup complete. Use manual operation, never automated tests or synthetic test PRs.
+merged by its author at that reviewed head with
+`gh pr merge <pr> --merge --match-head-commit <reviewed-sha>` before declaring setup complete. Use manual operation, never automated tests or synthetic test PRs.
 The browser agent handles the form and logo upload; the tool does not generate the manifest or navigate.
 
 For the local host runtime, keep the canonical GitHub origin and configure Git's native URL rewriting
@@ -817,7 +817,8 @@ restore a revoked registration or expand existing permissions automatically.
 
 Before activation, inspect effective main rules: require a PR, retain deletion and history-rewrite
 protection and permit no agent bypass. The board's independent review at the exact head is the required
-review; after it passes, the author merges that exact reviewed head. A changed head requires a new
+review; after it passes, the author merges that exact reviewed head with
+`gh pr merge <pr> --merge --match-head-commit <reviewed-sha>`. A changed head requires a new
 review. Authors never review their own work or bypass independent review. Do not add a separate GitHub
 approving-review requirement. Existing rulesets are preserved by setup helpers, so the setup agent
 reconciles conflicting repository and inherited organization rules through the owner's administration.
@@ -845,7 +846,8 @@ requests. Inspect
 `repos/<owner>/<repo>/actions/permissions/workflow` through `gh api`; the GitHub setting named
 `can_approve_pull_request_reviews` governs Actions creating and approving PRs. Configure the agreed setting
 through the owner's repository administration, preserving other workflow permissions and organization policy.
-The landing workflow opens the PR; the board records independent review and its author merges the reviewed head.
+The landing workflow opens the PR; the board records independent review and its author merges the reviewed head
+with `gh pr merge <pr> --merge --match-head-commit <reviewed-sha>`.
 If organization policy prevents these settings, resolve that with the owner before claiming landing works.
 The workflow never arms auto-merge or merges a candidate before its exact-head review.
 

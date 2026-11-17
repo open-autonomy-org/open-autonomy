@@ -5,8 +5,9 @@
 - Verify manually in the [World scenario](world/README.md): synthetic vendors, the real platform and the
   native cookbook agent. Use ordinary World lifecycle and attachment commands, then read the actual output.
 - Nothing pushes to `main`. Push a `land/<topic>` branch (or `agent/<task id>` for agent work); the landing
-  workflow opens its PR. An independent review judges its current head, and the author merges it once that
-  review passes; a newer head needs a new review. Human approval is reserved for release. Never merge unreviewed.
+  workflow opens its PR. An independent review judges its exact head. After a pass, the author merges that
+  head with `gh pr merge <pr> --merge --match-head-commit <reviewed-sha>`; a newer head needs a new review.
+  Human approval is reserved for release. Never merge unreviewed.
 - Deploys and releases happen when the owner merges the one Release pull request (`main` → `publish`); admin operations
   run only on the owner's own dispatch (`apps/platform/DEPLOY.md`). No machine holds a deploy or admin token.
 - `hermes/`, `container/` and `.open-autonomy/` in this repository come from the Hermes kit

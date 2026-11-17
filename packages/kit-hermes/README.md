@@ -238,7 +238,8 @@ The native kanban holds execution tasks; the gateway's dispatcher pulls them dow
 a worker session (the `develop` skill) that builds it, verifies it where `AGENTS.md` says the project is
 verified, pushes an `agent/<task id>` branch to open a PR and hands its exact head and manual evidence
 to the board for independent review against the constitution and scope. That exact-head board review is
-the required review; after it passes, the author merges the exact reviewed head. A changed head requires
+the required review; after it passes, the author merges the exact reviewed head with
+`gh pr merge <pr> --merge --match-head-commit <reviewed-sha>`. A changed head requires
 a new review. Authors never review their own work or bypass independent review. The native reviewer
 confirms landing before completing the task; no separate GitHub approving review is required.
 Once an hour the PM reconciles the roadmap, contributions, commitments and release gates (the `pm` skill).

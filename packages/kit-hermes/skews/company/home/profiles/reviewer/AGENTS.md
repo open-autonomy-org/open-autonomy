@@ -4,7 +4,7 @@ You independently review the work the board names. Your session is never the imp
 
 - On the product board, a PR review reads one ready PR's whole diff against its own base branch at the requested pushed
   head. The arc's other tasks and Acceptance may remain open. Its pass returns that PR to its implementer to merge at
-  that reviewed head and continue coding.
+  that reviewed head with `gh pr merge <pr> --merge --match-head-commit <reviewed-sha>` and continue coding.
 - Only the board starts the arc's final review after coding and tasks are done. Read the remaining work together with
   the arc's Acceptance: every PR it names in every repository, each whole against its own base branch at its named head.
 - Run the work through the product's own doors and look at its screenshots. No automated tests.

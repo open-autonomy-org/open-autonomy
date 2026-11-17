@@ -1,6 +1,6 @@
 name: Land a branch
 # Pushing opens the PR. The board independently reviews its exact head;
-# after a pass the author merges that head. A changed head requires a new review.
+# after a pass the author merges that head with gh pr merge --match-head-commit <reviewed-sha>. A changed head requires a new review.
 #   agent/**  the agent's own work        land/**  a maintainer's
 on:
   push:
@@ -22,5 +22,5 @@ jobs:
           existing=$(gh pr list -R "$REPO" --head "$BRANCH" --state open --json number -q '.[0].number')
           if [ -z "$existing" ]; then
             gh pr create -R "$REPO" --base main --head "$BRANCH" --title "$BRANCH" \
-              --body "Opened by the landing workflow for \`$BRANCH\`. The board independently reviews the exact head; after a pass, the author merges that head. A changed head requires a new review."
+              --body "Opened by the landing workflow for \`$BRANCH\`. The board independently reviews the exact head; after a pass, the author merges that head with gh pr merge --match-head-commit <reviewed-sha>. A changed head requires a new review."
           fi

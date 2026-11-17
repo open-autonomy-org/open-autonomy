@@ -97,6 +97,8 @@ What exists (source audit, same day, `main` at eafe027e):
   VO-3843 manager rulings 281913 and 282002 (2026-11-16), which extend the board's exact-head review
   rule to every kit-owned integration instruction. Kit-owned project copies take these changes
   through their ordinary upgrade; seeded project Git rules are maintained by their projects.
+  Integration verdicts use the board's review door; the community CLI has no GitHub-review submission
+  verb. The author pins landing with `gh pr merge --match-head-commit <reviewed-sha>`.
 
 - **Several projects may run together as a fleet.** One executor, one multiplexed gateway serving each
   project's own `hermes/` as a profile, one valve holding each project's key on its own port, one

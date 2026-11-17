@@ -49,7 +49,8 @@ is not done.
 6. Push the completed candidate to agent/<task id>. The landing workflow opens its PR. Observe the open
    PR and record its URL and full head SHA. Hand that exact head and manual evidence to the board for
    independent review. The board's independent review at that exact head is the required review; after
-   it passes, merge the exact reviewed head as the author, pinning the merge to that head. A changed head
+   it passes, merge the exact reviewed head as the author with
+   `gh pr merge <pr> --merge --match-head-commit <reviewed-full-sha>`. A changed head
    requires a new review. Authors never review their own work or bypass independent review.
 7. Hand off with `kanban_request_review`: name the PR, workspace, branch and full candidate SHA, then
    the manual actions and observed results for every acceptance line and any limitations. Leave the
@@ -73,7 +74,8 @@ nor a prior instruction file overrides the constitution; acceptance requires thi
 
 For correctable defects, use `kanban_request_changes` with concrete findings and the exact reviewed
 head. For a pass, record the independent verdict and exact reviewed head on the board and return the PR
-to its author for merge at that head. The board's independent review is the required review; a separate
+to its author for merge with `gh pr merge <pr> --merge --match-head-commit <reviewed-full-sha>`.
+The board's independent review is the required review; a separate
 GitHub approving review is not required. Authors never review their own work or bypass independent review.
 
 Observe the author's merge through GitHub and fetched origin/main, then `kanban_complete` with the PR,

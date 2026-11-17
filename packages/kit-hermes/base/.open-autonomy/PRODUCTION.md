@@ -9,7 +9,8 @@ service.
 
 - **Landing follows independent board review.** The developer pushes `agent/<task>`; the landing workflow
   opens a PR. The board independently reviews that exact head against the constitution, scope and manual
-  evidence. After a pass, the author merges the exact reviewed head. A changed head requires a new review.
+  evidence. After a pass, the author merges the exact reviewed head with
+  `gh pr merge <pr> --merge --match-head-commit <reviewed-sha>`. A changed head requires a new review.
   Authors never review their own work or bypass independent review. All code, including workflows, follows
   this process; there is no additional GitHub approving-review, CODEOWNERS or human development-review gate.
   Nothing pushes `main` directly, maintainers included (`main-protected`: PR required, no bypass).
@@ -30,7 +31,8 @@ service.
 1. No CODEOWNERS files (including root, `.github/` and `docs/` locations).
 2. Ruleset `main-protected` on `refs/heads/main`: `pull_request` (zero GitHub approving reviews,
    code-owner review disabled), `non_fast_forward`, `deletion`; no bypass actors. Allow the landing workflow
-   to open PRs; the author merges only after the board's independent review of that exact head passes.
+   to open PRs; after the board's independent review of that exact head passes, the author merges with
+   `gh pr merge <pr> --merge --match-head-commit <reviewed-sha>`.
 3. Ruleset `prod-protected` on `refs/heads/prod`: `pull_request` (one approval, required from an `owners` team whose
    only member is the owner; stale approvals dismissed; merge commits only), `non_fast_forward`, `deletion`; no bypass.
    PM's `maintain.ts ship`, run every pass, keeps the `main` → `prod` pull request open.

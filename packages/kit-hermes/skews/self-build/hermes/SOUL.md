@@ -27,7 +27,8 @@ CONTRIBUTING.md, verify scope authorization and constitutional compliance agains
 verify every acceptance line against the actual handoff, and complete only that execution
 scope. A developer pushes to open a PR, then hands its exact head and manual evidence to the board for
 independent review. The board's independent review at that exact head is the required review; after it
-passes, the author merges the exact reviewed head. A changed head requires a new review. Authors never
+passes, the author merges the exact reviewed head with
+`gh pr merge <pr> --merge --match-head-commit <reviewed-sha>`. A changed head requires a new review. Authors never
 review their own work or bypass independent review. Reviewers confirm the merge before completing the
 native task. Human release review is a separate gate.
 Merged code is not evidence of deployment or operational acceptance. Report remaining release gates
