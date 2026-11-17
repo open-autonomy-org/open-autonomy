@@ -107,8 +107,9 @@ permitted (on `origin/main`, named in full as `VOLTER_NPM_RELEASE_COMMIT`), as t
 pushes `publish`, so it deploys nothing (ADR 0033) (`--check` lists what it would
 publish). Before any upload it scans the lockfiles the kit ships (`.github/release-scan.mjs`), packs each version once
 from the files git tracks with git's file modes, installs every tarball fresh and resolves its modules
-(`scripts/npm-verify-tarballs.mjs`), and sweeps every file of it for keys with supercode's
-`scripts/npm-keys-sweep.mjs` at the commit the script pins (gitleaks, every compressed entry opened, the machine's
+(`scripts/npm-verify-tarballs.mjs`), and sweeps every file of it for keys with
+[Supercode's keys sweep](https://github.com/volter-ai/supercode/blob/e392ca8c4b14530874bb770e574ab01413da45f9/scripts/npm-keys-sweep.mjs)
+at the commit the script pins (gitleaks, every compressed entry opened, the machine's
 supercode custody values and `@volter/teams/redact`'s token forms); any failure publishes nothing. Only
 those swept tarballs are uploaded, npm's integrity for each is read back against the file's, and a new kit version is
 recorded as a `release-v<version>` tag and GitHub release. The world proves the same publish and a `bun create
@@ -122,7 +123,7 @@ Shared files connect either layout to the selected backend:
 README.md, CONSTITUTION.md, AGENTS.md, LICENSE   seeded project-owned documentation; additional docs vary by skew
 .open-autonomy/      config.yaml (account, platform, bounds, publish policy), agent.json (runtime setup),
                      publisher.ts, source-events.ts, owner-control.ts, host valve and credential tools, start.ts,
-                     enroll.ts, publication-operator.ts, vendored SDK, kit.json (kit, skew, version and identity)
+                     enroll.ts, publication-operator.ts, vendored SDK, kit.json (kit, skew, version, source revision when applicable, and identity)
 container/           supplied executor/image tooling; its use depends on the selected runtime
 .github/workflows/   supplied landing workflow where the skew includes it
 ```
@@ -204,12 +205,27 @@ activation.
 under `hermes/` or [home/](skews/company/home/) (excluding project skills outside the OA namespace and the Hermes board/webhook seeds),
 `agent.json`, the publisher,
 the key tool, the vendored SDK, `container/`, the landing workflow (self-build) and setup/production guides. A project is a branch of its skew
-(ADR 0006): it may change any of them, and `upgrade` merges the kit's next version into its copy three-way, the render of the version it last
-took (fetched once from the registry into the kit cache, `OPEN_AUTONOMY_KIT_CACHE` or `.cache/open-autonomy/kit` under the home directory) as the ancestor. A file only the project changed keeps the project's; a file
+(ADR 0006): it may change any of them, and `upgrade` merges the kit's next version into its copy three-way, the render of the kit it last took as the ancestor. Public packages are fetched once by version into the kit cache
+(`OPEN_AUTONOMY_KIT_CACHE` or `.cache/open-autonomy/kit` under the home directory). A file only the project changed keeps the project's; a file
 only the kit changed takes the kit's whole; a file both changed merges, and where the same lines moved apart the conflict stays in the file, marked,
 for an agent in the project's own session to resolve before landing. `check` reports the version, the files the project changed and any unresolved
 merge; behind the kit or mid-merge it exits 1. **Seeded** files are written once and never touched again: the README, the
 roadmap, historical board seed, the constitution, `CONTRIBUTING.md`, the changelog, `AGENTS.md`, the license, the model config, the publish policy.
+
+Source mode selects the prepared owning Open Autonomy checkout with `OPEN_AUTONOMY_SOURCE` (or runs directly
+from its native kit). Identity-recording operations require a clean tree and record its full Git commit as
+`sourceRevision`; ordinary development commands and `check` allow dirty/untracked files. `check` and `upgrade`
+compare revision and version even when two revisions share a package version or the selected revision has a
+lower version. The selected source's own CLI owns the complete upgrade, including target migrations, merge and
+revision recording, using its own exact SDK. Targets missing revision support refuse with the selected commit
+and the required capability introduced by source revision 92ee6b3ee4b3639e55c4c548ee84f03985873c2c (or a reviewed
+source revision providing it); package version never chooses another engine. Historical ancestors need only
+their renderer and run in a private Bun process with their own source and SDK, never the registry.
+`OPEN_AUTONOMY_KIT_CACHE` must explicitly link both source packages under the full recorded commit's directory:
+its `node_modules/create-open-autonomy` and `node_modules/@open-autonomy/sdk` links point into the same clean owning
+checkout. A version-only older record instead requires those links under its package version; that validated entry
+is the explicit ancestor the old record could not name. A missing or mismatched entry refuses. The source-selection
+and ancestry decision is [ADR 0036](../../docs/decisions/0036-source-kit-revisions-and-ancestors.md).
 
 ## How a Hermes self-build repository runs itself
 
@@ -220,15 +236,19 @@ a board (manage-project and self-build keep them; the others plan on the board):
 memory, which the PM scrum reconciles from sourced input and queues bounded fleet work from.
 The native kanban holds execution tasks; the gateway's dispatcher pulls them down and runs each as
 a worker session (the `develop` skill) that builds it, verifies it where `AGENTS.md` says the project is
-verified, pushes an `agent/<task id>` branch to open a PR and hands off. The native reviewer examines its
-exact head against the constitution, scope and manual evidence, submits a GitHub review and confirms the
-merge before completing the task. GitHub requires approval and dismisses stale approvals on changed diffs.
+verified, pushes an `agent/<task id>` branch to open a PR and hands its exact head and manual evidence
+to the board for independent review against the constitution and scope. That exact-head board review is
+the required review; after it passes, the author merges the exact reviewed head with
+`gh pr merge <pr> --merge --match-head-commit <reviewed-sha>`. A changed head requires
+a new review. Authors never review their own work or bypass independent review. The native reviewer
+confirms landing before completing the task; no separate GitHub approving review is required.
 Once an hour the PM reconciles the roadmap, contributions, commitments and release gates (the `pm` skill).
 Sessions admitted by the publication policy appear on the selected server with their settled costs.
 
-The PM's `.open-autonomy/maintain.ts` compares the installed kit with npm, lands upgrades from a separate
+The PM's `.open-autonomy/maintain.ts` compares the installed kit with npm in public-package mode, or with the
+selected exact source revision in source mode, and lands upgrades from a separate
 worktree only while idle (a merge conflict holds the worktree for the PM to resolve, then resumes), lands them the
-way the repository lands changes (a `land/kit-<version>` branch for its landing workflow, or main itself where no
+way the repository lands changes (a `land/kit-<version>` branch (the full commit replaces the version in source mode) for its landing workflow, or main itself where no
 landing workflow stands), and requests a complete stack restart after the upgrade lands. When PM decides the
 Release is ready, `maintain.ts ship` writes its package on the standing Release pull request (`main` → `prod`) and
 mentions the owner there once. The owner's approval and merge of the Release is the one human act that ships.

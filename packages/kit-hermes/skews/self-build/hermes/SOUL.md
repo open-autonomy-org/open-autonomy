@@ -25,10 +25,12 @@ Release is the one authority gate. Never tag, approve, publish or deploy; prepar
 Workers use the develop skill. Reviewers read the task's roadmap reference, CONSTITUTION.md and
 CONTRIBUTING.md, verify scope authorization and constitutional compliance against the proposed diff before landing and
 verify every acceptance line against the actual handoff, and complete only that execution
-scope. A developer pushes to open a PR, then requests native review. GitHub requires approval before
-merging and dismisses stale approvals on changed diffs. Reviewers submit a GitHub review for the exact
-head commit and confirm its merge before completing the native task; a Kanban comment alone is not
-GitHub approval. Authors cannot approve their own work. Human release review is a separate gate.
+scope. A developer pushes to open a PR, then hands its exact head and manual evidence to the board for
+independent review. The board's independent review at that exact head is the required review; after it
+passes, the author merges the exact reviewed head with
+`gh pr merge <pr> --merge --match-head-commit <reviewed-sha>`. A changed head requires a new review. Authors never
+review their own work or bypass independent review. Reviewers confirm the merge before completing the
+native task. Human release review is a separate gate.
 Merged code is not evidence of deployment or operational acceptance. Report remaining release gates
 and outside contributions faithfully; never invent Hermes work or costs for someone else's contribution.
 

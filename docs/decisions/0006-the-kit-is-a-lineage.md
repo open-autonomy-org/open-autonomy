@@ -86,6 +86,19 @@ What exists (source audit, same day, `main` at eafe027e):
   skew and no private-skew mechanism; a second engagement decides then whether it forks from
   peak-autonomy or from self-build. The mechanisms Peak's history relies on, `seats` and the
   tracker-owned timeline, are doors and stay in base.
+- **Independent board review owns integration.** The board records an independent review of the
+  exact PR head and its manual evidence. After a pass, the author merges that exact reviewed head;
+  a changed head requires a new review, and authors never review their own work. The landing
+  workflow opens a PR and never arms auto-merge. Main's setup requires a PR, prevents deletion and
+  history rewriting, and has no bypass actors or additional GitHub approving-review requirement.
+  Setup preserves existing rulesets; its agent reconciles conflicting effective main rules through
+  the owner's administration. Release approval remains the owner's separate gate. This corrects
+  the kit's conflicting GitHub approval and automatic-merge instructions at their source under
+  VO-3843 manager rulings 281913 and 282002 (2026-11-16), which extend the board's exact-head review
+  rule to every kit-owned integration instruction. Kit-owned project copies take these changes
+  through their ordinary upgrade; seeded project Git rules are maintained by their projects.
+  Integration verdicts use the board's review door; the community CLI has no GitHub-review submission
+  verb. The author pins landing with `gh pr merge --match-head-commit <reviewed-sha>`.
 
 - **Several projects may run together as a fleet.** One executor, one multiplexed gateway serving each
   project's own `hermes/` as a profile, one valve holding each project's key on its own port, one
