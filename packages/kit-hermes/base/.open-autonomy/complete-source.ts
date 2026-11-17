@@ -1,5 +1,5 @@
 // A prepared generation contains its entire committed tree, independent of its caller's sparse checkout.
-import { accessSync, constants, lstatSync, readlinkSync } from 'node:fs';
+import { accessSync, constants, existsSync, lstatSync, readlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSyncWork } from './work-ledger.ts';
 
@@ -55,7 +55,22 @@ function assertTree(project: string, revision: string, prefix: string): void {
 /** Shared preparation/admission guard; complete historical snapshots need no new receipt version. */
 export function assertCompleteSource(project: string, revision: string): void { assertTree(project, revision, ''); }
 
-async function populate(project: string, revision: string, prefix: string, run: Run): Promise<void> {
+// Each gitlink's submodule name, as .gitmodules registers it; git keeps a submodule's own repository under that name.
+function submoduleNames(project: string, revision: string, prefix: string): Map<string, string> {
+  const names = new Map<string, string>();
+  const records = git(project, ['config', '-z', '-f', '.gitmodules', '--get-regexp', '^submodule\\..*\\.path$'], prefix || '.', revision).split('\0');
+  for (const record of records) {
+    const at = record.indexOf('\n');
+    if (at > 0) names.set(record.slice(at + 1), record.slice('submodule.'.length, at - '.path'.length));
+  }
+  return names;
+}
+// `store` is the long-lived project checkout's git directory at this level (its common git directory, then
+// modules/<name> per nested submodule), which no generation's retirement removes: a generation's own submodule
+// repositories live under its worktree registration and go with it. A gitlink is cloned borrowing that store's
+// objects and dissociated from it, so the generation never depends on the store afterwards and fetches only what the
+// store lacks; with no store there it is cloned in full, as before.
+async function populate(project: string, revision: string, prefix: string, run: Run, store: string | null): Promise<void> {
   const inventory = entries(project, revision, prefix);
   try { await run(['git', ...complete, 'read-tree', '--reset', '-u', '--no-sparse-checkout', revision], project); }
   catch (cause) {
@@ -67,19 +82,23 @@ async function populate(project: string, revision: string, prefix: string, run: 
     }
     throw refused(prefix || '.', revision, cause);
   }
+  const names = inventory.some(entry => entry.mode === '160000') ? submoduleNames(project, revision, prefix) : new Map<string, string>();
   for (const entry of inventory) {
     if (entry.mode !== '160000') { requireEntry(project, entry, revision, prefix); continue; }
-    const relative = prefix + entry.path;
+    const relative = prefix + entry.path, name = names.get(entry.path);
+    const local = store && name ? join(store, 'modules', name) : null;
+    const reference = local && existsSync(join(local, 'objects')) ? ['--reference', local, '--dissociate'] : [];
     try {
       // Native init retains its normal URL registration; only the owned checkout's sparse behavior is overridden.
-      await run(['git', ...complete, 'submodule', 'update', '--init', '--checkout', '--', `:(literal)${entry.path}`], project);
-      await populate(join(project, entry.path), entry.revision, relative + '/', run);
+      await run(['git', ...complete, 'submodule', 'update', '--init', '--checkout', ...reference, '--', `:(literal)${entry.path}`], project);
+      await populate(join(project, entry.path), entry.revision, relative + '/', run, local);
     } catch (cause) { throw refused(relative, entry.revision, cause); }
   }
 }
 export async function checkoutCompleteSource(project: string, snapshot: string, revision: string, run: Run): Promise<void> {
   try { await run(['git', 'worktree', 'add', '--detach', '--no-checkout', snapshot, revision], project); }
   catch (cause) { throw refused('.', revision, cause); }
-  await populate(snapshot, revision, '', run);
+  const store = git(project, ['rev-parse', '--path-format=absolute', '--git-common-dir'], '.', revision).trim();
+  await populate(snapshot, revision, '', run, store);
   assertCompleteSource(snapshot, revision);
 }
