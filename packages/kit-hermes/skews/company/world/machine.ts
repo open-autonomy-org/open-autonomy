@@ -30,7 +30,7 @@ const bin = own ?? process.env.VO_SUPERCODE_BIN!;
 // The World's panes are headless: no terminal window opens on the owner's screen.
 // Its own supercode runs its own Teams package (beside it, as an install's is), not the one the World names for the rest.
 const { SUPERCODE_TEAMS_ENTRY: _teams, ...inherited } = process.env;
-const env = { ...(own ? inherited : process.env), ...(own ? { SUPERCODE_BIN: own, PATH: `${dirname(own)}:${process.env.PATH}` } : {}), SUPERCODE_POPUP_TERMINAL: 'none', HOME: home, SUPERCODE_HOME: supercodeHome, ANTHROPIC_BASE_URL: process.env.ANTHROPIC_TWIN_URL!, ANTHROPIC_API_KEY: 'sk-twin', SUPERCODE_ORCHESTRATOR_ENTRY: process.env.VO_ORCHESTRATOR_BIN! , ...(process.env.TEAMS_URL && process.env.VO_HEALTH_ALARMS ? { SUPERCODE_HEALTH_ENTRY: process.env.SUPERCODE_HEALTH_ENTRY ?? `${process.env.VO_SUPERCODE_TREE}/sdk/health/bin/health.mjs` } : {}) };
+const env = { ...(own ? inherited : process.env), ...(own ? { SUPERCODE_BIN: own, PATH: `${dirname(own)}:${process.env.PATH}` } : {}), SUPERCODE_POPUP_TERMINAL: 'none', HOME: home, SUPERCODE_HOME: supercodeHome, ANTHROPIC_BASE_URL: process.env.ANTHROPIC_TWIN_URL!, ANTHROPIC_API_KEY: 'sk-twin', SUPERCODE_ORCHESTRATOR_ENTRY: process.env.VO_ORCHESTRATOR_BIN! };
 const run = (cmd: string[], stdin?: string) => {
   const done = Bun.spawnSync({ cmd, env, stdin: stdin === undefined ? 'ignore' : new TextEncoder().encode(stdin), stdout: 'pipe', stderr: 'pipe' });
   if (done.exitCode !== 0) throw new Error(`${cmd.slice(1, 4).join(' ')}: ${done.stderr.toString().trim().split('\n').at(-1)}`);

@@ -109,3 +109,7 @@ The source transaction restores the exact previous bytes before restarting prede
 v4 receipt identifies `program_kind: node` and its selected program; its `native` field remains only the established
 control protocol's pathname alias. A kit selects that complete retained closure. Runtime and program admission do not
 change D215/D217, release authority, privacy grants, custody or the separately permitted first adoption.
+
+[ADR 0036](0036-fleet-and-coding-programs-have-separate-owners.md) proposes
+separate installed fleet/coding owners and binds the Agent closure in this
+same prepared generation, preserving the native handover protocol.

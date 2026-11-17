@@ -839,8 +839,10 @@ This repository retains its existing World 2 topology through the native Git pin
 Initialize it with `git submodule update --init .open-autonomy/sources/twin`.
 Exact native workspace versions keep Core 2.0.15, Runtime 2.0.26, GitHub 2.0.17,
 OpenAI/Discord/Jira/Slack 2.0.15, Access 2.0.2, UI/MongoDB 0.1.15 and private
-Tooling 0.1.0. The host's three Supercode declarations bind to the selected
-complete machine source graph; preparation checks actual names and versions.
-The legacy host keeps its project-owned start and channel dependencies while
-its adapter uses that graph's Node program, runtime, SDK and orchestrator.
-Moving its source graph requires explicit lock preparation before activation.
+Tooling 0.1.0.
+
+Fleet and Agent are separate installed machine programs, selected through
+`machine-supercode.ts`; this host does not install their packages beside its own
+dependencies. A development image takes explicitly named reviewed Fleet and Agent
+source contexts and uses each program's public command and SDK. Prepare any changed
+host lock through the normal runtime installer before activation.

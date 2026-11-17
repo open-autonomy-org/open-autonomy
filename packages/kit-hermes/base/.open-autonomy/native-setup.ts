@@ -1,9 +1,8 @@
 // The bounded native setup mapping in ADR 0026. Native codecs/jobs and applier ownership remain external.
 import { spawnWork, stopWorkChild } from './work-ledger.ts';
-import type { SupercodeHarnessClient } from '@volter/supercode-harness-sdk';
-import { harnessSdkModule, orchestratorModule, supercodeBin, supercodeCommand } from './machine-supercode.ts';
-// the machine's harness SDK (machine-supercode.ts)
-const { SupercodeHarnessClient: HarnessClient } = await import(harnessSdkModule());
+import { codingSdkModule, codingOrchestratorModule, codingBin, codingCommand, machineNode } from './machine-supercode.ts';
+// the installed Agent SDK (machine-supercode.ts)
+const { SupercodeHarnessClient: HarnessClient } = await import(codingSdkModule());
 import type { Package, Setup } from './agent.ts';
 import { profileHarness } from './agent.ts';
 import { NativeRuntime, type NativeProfile } from './native-runtime.ts';
@@ -70,7 +69,7 @@ function patch(profile: NativeProfile, values: Unit, harness: string): void {
   }
 }
 
-/** `written` is the worker fields this machine's supercode saves; a declared worker field outside them is withheld from
+/** `written` is the worker fields this machine's Agent saves; a declared worker field outside them is withheld from
  *  the applier (never applied, never stamped) and pushed onto `withheld`, for the start to say. */
 function nativeSpec(setup: Setup, name: string, raw: Package, written: Set<string>, withheld: Array<[string, unknown]>): Package {
   for (const key of Object.keys(raw)) if (!['schema_version', 'parameters', 'inference', 'jobs', 'extensions', 'moved', 'removed'].includes(key)) throw new Error(`${name}: unsupported native declaration ${key}`);
@@ -174,15 +173,15 @@ function requireEffects(safety: NativeSafety): void { if (safety.blocked) throw 
 async function nativeNodeCall(request: NodeRequest, workspace: string, safety: NativeSafety, prefix: string[] = []): Promise<unknown> {
   requireEffects(safety);
   // The owning exports/cold job CLI require Node. Keep their validation, effects and readback on that runtime.
-  const moduleUrl = orchestratorModule();
-  const sdkUrl = harnessSdkModule();
+  const moduleUrl = codingOrchestratorModule();
+  const sdkUrl = codingSdkModule();
   const program = `import { readFileSync } from 'node:fs';
 let client;
 try { const owner = await import(process.argv[1]); const request = JSON.parse(readFileSync(0, 'utf8')); let result;
 if(request.operation === 'validate') { for(const job of request.jobs) owner.buildJob(job.profile, job.args, request.now); }
 else { if(!['create','update','pause','remove'].includes(request.operation)) throw Error('Unsupported native job operation');
 const { SupercodeHarnessClient } = await import(process.argv[2]);
-client = new SupercodeHarnessClient({command:process.env.SUPERCODE_BIN,args:['harness','serve']});
+client = new SupercodeHarnessClient({command:process.execPath,args:[process.env.SUPERCODE_CODING_BIN,'harness','serve']});
 const door = await owner.orchestratorDoor({root:request.root,profile:request.profile,
 load:async()=>({state:(await client.orchestrationLoad({root:request.root,flavor:'orchestrator'})).orchestration})});
 result = await door[request.operation](...request.args); }
@@ -190,29 +189,31 @@ process.stdout.write(JSON.stringify({ok:true,result})); }
 catch(error) { process.stdout.write(JSON.stringify({ok:false,message:String(error.message).slice(0,2048)})); process.exitCode=1; }
 finally { await client?.close(); }`;
   const child = (() => {
-    try { return spawnWork(() => Bun.spawn({ cmd: [...prefix, 'node', '--input-type=module', '-e', program, moduleUrl, sdkUrl], cwd: workspace,
-      env: { ...process.env, SUPERCODE_BIN: supercodeBin() },
+    try { return spawnWork(() => Bun.spawn({ cmd: [...prefix, machineNode(), '--input-type=module', '-e', program, moduleUrl, sdkUrl], cwd: workspace,
+      env: { ...process.env, SUPERCODE_CODING_BIN: codingBin() },
       detached: true, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' })); }
     catch (error) { if (request.operation !== 'validate') safety.blocked = 'Native job transport unavailable; no further effects allowed'; throw error; }
   })();
-  let interrupted = false, expired = false, settled = false, terminating = false, killTimer: ReturnType<typeof setTimeout> | undefined;
-  const signalOwned = (signal: 'SIGTERM' | 'SIGKILL') => {
-    try { stopWorkChild(child, () => process.kill(-child.pid, signal), { signal }); } catch { try { stopWorkChild(child, () => child.kill(signal), { signal }); } catch { /* already exited */ } }
-  };
+  const completed = Promise.allSettled([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+  let interrupted = false, settled = false, terminating = false;
   const terminate = () => {
+    if (terminating) return;
     terminating = true;
-    signalOwned('SIGTERM');
-    killTimer ??= setTimeout(() => signalOwned('SIGKILL'), 5000);
+    // Once the direct child has exited, a numeric PID alone cannot authorize a new group signal.
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    try { stopWorkChild(child, () => process.platform === 'win32' ? child.kill('SIGTERM') : process.kill(-child.pid, 'SIGTERM'), { signal: 'SIGTERM' }); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') safety.blocked = 'Native setup cancellation could not signal its child; no further effects allowed; child custody retained'; }
   };
   const interrupt = () => { interrupted = true; safety.blocked = 'Native setup cancelled; no further effects allowed; retained intents require owning readback'; terminate(); };
-  const timeout = setTimeout(() => { expired = true; safety.blocked = 'Native setup timed out; no further effects allowed; retained intents require owning readback'; terminate(); }, 60_000);
   for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(signal, interrupt);
   const outcome = request.operation === 'validate' ? 'no setup effects applied' : 'job outcome may be uncertain; retained applier intent/state requires owning readback';
   try {
-    child.stdin.write(JSON.stringify(request)); child.stdin.end();
-    const [code, stdout] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+    await child.stdin.write(JSON.stringify(request)); await child.stdin.end();
+    const results = await completed;
     settled = true;
-    if (interrupted || expired) throw new Error(`Native job ${request.operation} ${expired ? 'timed out' : 'was cancelled'}; ${outcome}`);
+    for (const result of results) if (result.status === 'rejected') throw result.reason;
+    const [code, stdout] = results.map(result => (result as PromiseFulfilledResult<number | string>).value) as [number, string, string];
+    if (interrupted) throw new Error(`Native job ${request.operation} was cancelled; ${outcome}`);
     let reply: { ok?: boolean; result?: unknown; message?: string };
     try { reply = JSON.parse(stdout); } catch { throw new Error(`Native job ${request.operation} exited ${code} without its response; ${outcome}`); }
     if (code !== 0 || reply.ok !== true) throw new Error(`Owning native job ${request.operation} refused: ${redactSecrets(reply.message ?? `exit ${code}`)}; ${outcome}`);
@@ -221,19 +222,27 @@ finally { await client?.close(); }`;
     if (request.operation !== 'validate') safety.blocked ??= 'Native job outcome uncertain/refused; no further effects allowed; retained intents require owning readback';
     throw error;
   } finally {
-    if (!settled) { terminate(); await child.exited; }
-    // A direct Node exit does not prove its SDK/CLI descendants exited; finish the owned group before disarming cleanup.
-    if (terminating) signalOwned('SIGKILL');
-    clearTimeout(timeout); clearTimeout(killTimer);
+    if (!settled) { terminate(); await completed; }
+    // A direct Node exit does not prove its SDK/CLI descendants exited. Join the native group's positive absence;
+    // an access refusal is unknown, and no elapsed interval changes it into completed cleanup.
+    if (terminating && process.platform !== 'win32') while (true) {
+      try { process.kill(-child.pid, 0); }
+      catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === 'ESRCH') break;
+        if (code !== 'EPERM') throw error;
+      }
+      await Bun.sleep(25);
+    }
     for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.off(signal, interrupt);
   }
 }
 
 export async function applyNative(options: { setup: Setup; root: string; homeId: string; stateRoot: string; workspace: string; asAgent?: string[] }): Promise<string[]> {
   const safety: NativeSafety = {};
-  const applier = await import(orchestratorModule('./apply'));
-  const { orchestratorDoor } = await import(orchestratorModule('./apply/doors'));
-  const command = [...(options.asAgent ?? []), ...supercodeCommand(['harness', 'serve'])];
+  const applier = await import(codingOrchestratorModule('./apply'));
+  const { orchestratorDoor } = await import(codingOrchestratorModule('./apply/doors'));
+  const command = [...(options.asAgent ?? []), ...codingCommand(['harness', 'serve'])];
   const sc = new HarnessClient({ command: command[0], args: command.slice(1) });
   const notices: string[] = [];
   const runtime = new NativeRuntime({ kind: 'orchestrator', root: options.root }, sc);
@@ -248,7 +257,7 @@ export async function applyNative(options: { setup: Setup; root: string; homeId:
   };
   type Row = { key: string; action: string; detail?: string; differs?: string[]; patch?: Unit };
   try {
-    // Which worker fields this machine's supercode saves: its harness service's own answer (`orchestration.worker_fields`,
+    // Which worker fields this machine's Agent saves: its harness service's own answer (`orchestration.worker_fields`,
     // supercode d9c92add1 and later), else what every earlier service writes.
     const advertised = ((await sc.capabilities()) as { orchestration?: { worker_fields?: unknown } }).orchestration?.worker_fields;
     const written = new Set(Array.isArray(advertised) ? advertised.map(String) : UNADVERTISED_WORKER_FIELDS);
@@ -269,8 +278,8 @@ export async function applyNative(options: { setup: Setup; root: string; homeId:
       const current = (await get()).profile;
       effective(current, spec, units, name);
       for (const [key, value] of withheld) notices.push(same(read(current, key), value)
-        ? `${key} ${value} is declared for ${name} and is in its config.yaml, but this machine's supercode does not save it yet, so it is left as it is, not applied here, and the next save of this profile drops it; update supercode`
-        : `${key} ${value} is declared for ${name}; this machine's supercode does not save it yet, so it is not applied; update supercode`);
+        ? `${key} ${value} is declared for ${name} and is in its config.yaml, but this machine's Agent does not save it yet, so it is left as it is, not applied here, and the next save of this profile drops it; update supercode-agent`
+        : `${key} ${value} is declared for ${name}; this machine's Agent does not save it yet, so it is not applied; update supercode-agent`);
       notices.push(...liveWarnings(current, units, name));
       const door = Object.assign(await orchestratorDoor({ root: options.root, profile: name, load: async () => ({ state: (await observe()).orchestration }) }) as NativeJobDoor, {
         create: (key: string, want: Unit) => mutate({ operation: 'create', root: options.root, profile: name, args: [key, want] }),

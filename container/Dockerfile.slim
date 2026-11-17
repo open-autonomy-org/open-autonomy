@@ -5,7 +5,7 @@
 # a browser, never render an image or a video, never speak, never join a chat platform.
 #
 # Use this file exactly like `Dockerfile` (same instance checkout build context):
-#     docker build --build-context supercode-source=<reviewed-supercode-checkout> -f container/Dockerfile.slim -t <tag> .
+#     docker build --build-context supercode-source=<reviewed-fleet-checkout> --build-context supercode-agent-source=<reviewed-agent-checkout> -f container/Dockerfile.slim -t <tag> .
 #
 # ---------------------------------------------------------------------------------------
 # WHAT IS REMOVED, AND BY WHICH MECHANISM
@@ -84,8 +84,9 @@ FROM node:26.12.0-bookworm-slim AS node-runtime
 
 FROM ${HERMES_IMAGE} AS pruned
 USER root
-# The source CLI requires Node >=26.8.1.
-COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
+# Fleet and Agent select their interpreter independently of the provider PATH.
+COPY --from=node-runtime /usr/local/bin/node /opt/supercode-node/bin/node
+ENV SUPERCODE_NODE_BIN=/opt/supercode-node/bin/node
 
 # ---- identical to container/Dockerfile from here ----
 RUN apt-get update && apt-get install -y --no-install-recommends openssh-client git ca-certificates curl unzip \
@@ -102,14 +103,19 @@ RUN curl -fsSL https://get.pnpm.io/install.sh | PNPM_VERSION=12.15.0 SHELL=/bin/
 ARG CODEX_VERSION=0.156.1
 # Supply the exact reviewed source checkout as a named native build context.
 COPY --from=supercode-source --exclude=**/node_modules --exclude=**/.git --exclude=**/.env* --exclude=recordings --exclude=docs/evidence / /opt/supercode/
+COPY --from=supercode-agent-source --exclude=**/node_modules --exclude=**/.git --exclude=**/.env* / /opt/supercode-agent/
 COPY .open-autonomy /opt/agent/.open-autonomy
-COPY container/pnpm-source-workspace.yaml /opt/agent/.open-autonomy/pnpm-workspace.yaml
 # Install into one writable image layer so OverlayFS does not copy up shared store files.
-RUN pnpm --config.nodeLinker=hoisted add -g --package-import-method hardlink "@openai/codex@${CODEX_VERSION}" && codex --version \
+RUN export PATH="/opt/supercode-node/bin:$PATH"; \
+    pnpm --config.nodeLinker=hoisted add -g --package-import-method hardlink "@openai/codex@${CODEX_VERSION}" && codex --version \
     && pnpm --dir /opt/supercode --config.nodeLinker=hoisted install --frozen-lockfile --package-import-method hardlink \
     && pnpm --dir /opt/supercode run build:sources \
+    && pnpm --dir /opt/supercode-agent --config.overrides='{"@volter/supercode-interchange":"link:/opt/supercode/sdk/interchange","@volter/supercode-harness-sdk":"link:/opt/supercode/sdk/typescript","@volter/supercode-teams":"link:/opt/supercode/sdk/teams","@volter/teams":"link:/opt/supercode/sdk/volter-teams","@volter/supercode-terminal":"link:/opt/supercode/sdk/terminal","@volter/supercode-orchestrator":"link:/opt/supercode/sdk/orchestrator"}' install --no-frozen-lockfile --package-import-method hardlink \
+    && pnpm --dir /opt/supercode-agent run build \
     && pnpm --dir /opt/agent/.open-autonomy install --no-frozen-lockfile --package-import-method hardlink \
-    && /opt/agent/.open-autonomy/node_modules/.bin/supercode --version
+    && ln -s /opt/supercode/packaging/npm/bin/supercode.js /usr/local/bin/supercode \
+    && ln -s /opt/supercode-agent/packaging/npm/bin/supercode-agent.js /usr/local/bin/supercode-agent \
+    && supercode --version && supercode-agent --version
 RUN ln -s /opt/agent/.open-autonomy/node_modules/.bin/volter-world /usr/local/bin/volter-world
 RUN mkdir -p /work/project /opt/data && chown hermes:hermes /work/project /opt/data
 # ---- end of the shared steps ----
@@ -195,11 +201,17 @@ RUN set -eu; \
 # bytes off the image rather than whiteouts on top of them.
 FROM scratch
 COPY --from=pruned / /
+ENV SUPERCODE_NODE_BIN=/opt/supercode-node/bin/node
 
 # Image metadata, restated: a filesystem copy carries no ENV/USER/VOLUME/ENTRYPOINT.
 # These are the base image's own values (see the upstream Hermes Dockerfile), with the
 # HERMES_WRITE_SAFE_ROOT and PATH additions this kit's Dockerfile makes, plus the two
 # changes the removals above require: no TUI bundle, and no Playwright download.
+# Explicit source inputs select each program's public development door.
+ENV OPEN_AUTONOMY_SUPERCODE_BIN=/opt/supercode/packaging/npm/bin/supercode.js
+ENV OPEN_AUTONOMY_ORCHESTRATOR_BIN=/opt/supercode/sdk/orchestrator/bin/orchestrator.mjs
+ENV OPEN_AUTONOMY_HARNESS_SDK=/opt/supercode/sdk/typescript
+ENV SUPERCODE_CODING_BIN=/opt/supercode-agent/packaging/npm/bin/supercode-agent.js
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV HERMES_WEB_DIST=/opt/hermes/hermes_cli/web_dist

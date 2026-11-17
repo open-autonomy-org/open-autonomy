@@ -4,11 +4,15 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync, renameSync, watch as watchFiles } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
-import { SupercodeHarnessClient, type SessionDescriptor, type HarnessRun } from '@volter/supercode-harness-sdk';
+import type { SessionDescriptor } from '@volter/supercode-harness-sdk';
+import type { HarnessRun } from '@volter/supercode-agent-sdk';
+import { harnessSdkModule, codingSdkModule, codingCommand, supercodeCommand, orchestratorEntry, machineNode } from './machine-supercode.ts';
+const { SupercodeHarnessClient } = await import(harnessSdkModule());
+const { SupercodeHarnessClient: CodingClient } = await import(codingSdkModule());
 import { ROADMAP_SCHEMA, linkOf, linksIn, type Link, type RoadmapItem } from './sdk/roadmap.ts';
 import { OpenAutonomy } from './sdk/client.ts';
 import { BoardEventSource } from './source-events.ts';
-import { fileURLToPath } from 'node:url';
+import { containerPrograms } from './container-process.ts';
 import { publicationPolicy, publishes, SourceRewritten, TranscriptPublisher, type PublicationCheckpoint, type RecordedCompletion } from './reporting.ts';
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
@@ -36,6 +40,7 @@ if (typeof home !== 'string' || !home.startsWith('/')) throw new Error('Reporter
 const container = arg('--container');
 if (container && !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(container)) throw new Error('Invalid container');
 if (container && cfg.seats) throw new Error('Host Claude seats require their own reporter');
+const executor = container ? await containerPrograms(container) : undefined;
 const projectDir = arg('--project') ?? (container ? '/work/project' : resolve(dirname(configPath), '..'));
 const stateFile = resolve(arg('--state-file') ?? resolve(dirname(configPath), cfg.state_file ?? 'reporter-state.json'));
 const baseUrl = process.env.OPEN_AUTONOMY_BASE_URL ?? `${(cfg.platform ?? 'https://open-autonomy.org').replace(/\/$/, '')}/v1`;
@@ -46,11 +51,14 @@ const runtimeFacts = (() => { try { const r = JSON.parse(process.env.OPEN_AUTONO
 // File/Git reads below are only for the project's documents; no native Hermes
 // database, config, jobs file or skill directory is parsed by the reporter.
 // HOME is the profile's home too: Git's route to the origin (a fleet's door rewrite) lives in its .gitconfig.
-const inContainer = (cmd: string[]) => ['docker', 'exec', '-i', '--user', 'hermes', '--env', `HERMES_HOME=${home}`, '--env', `HOME=${home}`, container!, ...cmd];
+const inContainer = (cmd: string[]) => ['docker', 'exec', '-i', '--user', 'hermes', '--env', `HERMES_HOME=${home}`, '--env', `HOME=${home}`,
+  ...(executor ? ['--env', `SUPERCODE_BIN=${executor.fleet.bin}`, '--env', `SUPERCODE_CODING_BIN=${executor.coding.bin}`, '--env', `SUPERCODE_NODE_BIN=${executor.node}`] : []), container!, ...cmd];
 const run = (cmd: string[]) => Bun.spawnSync({ cmd: container ? inContainer(cmd) : cmd, stdout: 'pipe', stderr: 'pipe', timeout: 20_000 });
-const supercode = process.env.SUPERCODE_BIN ?? (container ? 'supercode' : resolve(import.meta.dir, 'node_modules/.bin/supercode'));
-const reader = container ? inContainer([supercode, 'harness', 'serve']) : [supercode, 'harness', 'serve'];
-const sc = new SupercodeHarnessClient({ command: reader[0], args: reader.slice(1), env: { ...process.env, HERMES_HOME: home } as Record<string, string> });
+const reader = executor ? inContainer(supercodeCommand(['harness', 'serve'], executor.fleet.bin, executor.node)) : supercodeCommand(['harness', 'serve']);
+const codingReader = executor ? inContainer(supercodeCommand(['harness', 'serve'], executor.coding.bin, executor.node)) : codingCommand(['harness', 'serve']);
+const readerEnv = { ...process.env, HERMES_HOME: home } as Record<string, string>;
+const sc = new SupercodeHarnessClient({ command: reader[0], args: reader.slice(1), env: readerEnv });
+const coding = new CodingClient({ command: codingReader[0], args: codingReader.slice(1), env: readerEnv });
 const homes = { hermes: resolve(home, 'state.db'), ...(cfg.seats ? { claude_code: resolve(process.env.HOME ?? '', '.claude') } : {}) };
 // The owner's pause and resume reach the runtime that holds the schedule: Hermes's own file under Hermes; under the
 // orchestrator (another harness picked), its running daemon's door, which a write to the file would be lost under.
@@ -122,8 +130,8 @@ async function nativeState(): Promise<void> {
   if (nativeOk) return;
   nativeOk = false;
   const read = () => Promise.all([
-    sc.orchestrationLoad({ root: home, flavor: 'hermes' }, { timeoutMs: 60_000 }),
-    sc.listRuns({ harness: 'hermes', homes, limit: 500 }, { timeoutMs: 60_000 }),
+    coding.orchestrationLoad({ root: home, flavor: 'hermes' }, { timeoutMs: 0 }),
+    coding.listRuns({ harness: 'hermes', homes, limit: 500 }, { timeoutMs: 0 }),
   ]);
   let result: Awaited<ReturnType<typeof read>>;
   try { result = await read(); }
@@ -403,7 +411,7 @@ async function docs(): Promise<void> {
 async function setup(): Promise<void> {
   if (tenant) return;
   const [jobs, skills, inventory] = await Promise.all([
-    sc.listJobs({ harness: 'hermes', homes }), sc.listSkills({ harness: 'hermes', homes: { hermes: home } }), sc.listProfiles({ harness: 'hermes', homes }),
+    coding.listJobs({ harness: 'hermes', homes }), coding.listSkills({ harness: 'hermes', homes: { hermes: home } }), coding.listProfiles({ harness: 'hermes', homes }),
   ]);
   if (jobs.sources.some(s => s.state === 'unreadable')) throw new Error('Native schedule unreadable');
   const s = { harness: 'hermes', persona: profiles.default.persona?.text, model: inventory.profiles.find(p => p.name === 'default')?.model ?? undefined,
@@ -428,14 +436,14 @@ async function control(): Promise<void> {
   if (!c) { if (!controlUnreadable) { controlUnreadable = true; log(`operating state unreadable through ${baseUrl}; the owner's word waits`); } return; }
   controlUnreadable = false;
   const desired = c.desired?.state ?? 'running';
-  let jobs = await sc.listJobs(scheduler);
+  let jobs = await coding.listJobs(scheduler);
   if (jobs.sources.some(s => s.state === 'unreadable')) throw new Error('Native schedule unreadable');
   let changed = false;
   if (desired === 'paused') {
     // Ownership is written before the harness is touched: a crash or a thrown call after Hermes applied the pause
     // still leaves the job in the set, so `running` re-enables it; a pause that never applied leaves an enabled job,
     // which resume simply forgets.
-    for (const j of jobs.jobs) if (j.enabled) { pausedJobs.add(j.id); saveState(); await sc.pauseJob({ ...scheduler, id: j.id, profile: j.profile ?? undefined }); changed = true; }
+    for (const j of jobs.jobs) if (j.enabled) { pausedJobs.add(j.id); saveState(); await coding.pauseJob({ ...scheduler, id: j.id, profile: j.profile ?? undefined }); changed = true; }
     // The board is funded work too: its dispatcher would keep starting queued tasks. Each one waiting to be picked up is
     // deferred (a run in flight still finishes) and remembered, so `running` promotes exactly those.
     for (const t of boardTasks()) if (t.status === 'todo' && !pausedTasks.has(t.id)) { pausedTasks.add(t.id); saveState(); kanban('schedule', t.id, 'paused by the owner'); }
@@ -443,12 +451,12 @@ async function control(): Promise<void> {
     // Forgotten only after the harness has the job enabled again (or no longer has it); a thrown resume keeps ownership.
     for (const id of [...pausedJobs]) {
       const j = jobs.jobs.find(x => x.id === id);
-      if (j && !j.enabled) { await sc.resumeJob({ ...scheduler, id, profile: j.profile ?? undefined }); changed = true; }
+      if (j && !j.enabled) { await coding.resumeJob({ ...scheduler, id, profile: j.profile ?? undefined }); changed = true; }
       pausedJobs.delete(id); saveState();
     }
     for (const id of [...pausedTasks]) { if (boardTasks().some(t => t.id === id && t.status === 'scheduled')) kanban('promote', id, 'resumed by the owner'); pausedTasks.delete(id); saveState(); }
   }
-  if (changed) jobs = await sc.listJobs(scheduler);
+  if (changed) jobs = await coding.listJobs(scheduler);
   const enabled = jobs.jobs.filter(j => j.enabled).map(j => jobNames.get(j.id) ?? j.id);
   const paused = [...pausedJobs].map(id => jobNames.get(id) ?? id);
   const running = liveRun();
@@ -493,16 +501,16 @@ sc.on('sessionIndexEvent', ev => {
 });
 const eventCommand=container
   ? ['supercode-orchestrator','workflow','events','--root',home,'--json']
-  // The orchestrator the start runs (a review World's branch build), else the installed one.
-  : ['node',process.env.SUPERCODE_ORCHESTRATOR_ENTRY||fileURLToPath(import.meta.resolve('@volter/supercode-orchestrator/bin')),'workflow','events','--root',home,'--json'];
+  : [machineNode(),orchestratorEntry(),'workflow','events','--root',home,'--json'];
 const source=new BoardEventSource({command:container?inContainer(eventCommand):eventCommand,
   stateFile:`${stateFile}.board.json`,env:{...process.env,HERMES_HOME:home} as Record<string,string>,
   changed:async()=>{boardReady=true;nativeOk=false;await tick();},log});
 sc.on('exit', code => { if (!quitting) { log(`Volter Harness reader exited (${code})`); process.exit(1); } });
-await sc.start();
+coding.on('exit', code => { if (!quitting) { log(`Agent reader exited (${code})`); process.exit(1); } });
+await Promise.all([sc.start(), coding.start()]);
 // Each profile of the home keeps its own Hermes store, and discovery reads one store per query: the root's, then each
 // named profile's (its home from `listProfiles`). A profile's sessions carry its name, which `publish.private` may name.
-const named = (await sc.listProfiles({ harness: 'hermes', homes })).profiles.filter(p => !p.default && p.home);
+const named = (await coding.listProfiles({ harness: 'hermes', homes })).profiles.filter(p => !p.default && p.home);
 // The treasurer's sessions hold the cards it mints, so a home with a treasurer that `publish.private` does not name is
 // refused rather than published: a project's config is its own, and an upgrade does not rewrite it.
 if (named.some(p => p.name === 'treasurer') && !policy.private.includes('treasurer')) throw new Error('publish.private in .open-autonomy/config.yaml must name treasurer: its sessions hold the cards it mints, and they would be published');
@@ -516,9 +524,9 @@ for (const query of queries) for (const d of (await sc.subscribeSessionIndex(que
 // The host can start Hermes once SDK discovery and native state are readable.
 // Historical publication may take minutes; replay is not a readiness condition. A ledger still being written by the
 // gateway that just drained (a restart onto a moved main) reads as unreadable for a moment: that is a wait, not a death.
-for (let attempt = 1; ; attempt++) {
+for (;;) {
   try { await nativeState(); break; }
-  catch (e) { if (attempt >= 20) throw e; log(`native state not readable yet (${(e as Error).message}); retrying`); await Bun.sleep(3000); }
+  catch (e) { log(`native state not readable yet (${(e as Error).message}); retrying`); await Bun.sleep(3000); }
 }
 process.send?.({ type: 'reporter-ready' });
 // Discovery has its own pagination; the retained live index is not all history.
@@ -533,7 +541,7 @@ for (const query of queries) {
 let controlTimer: ReturnType<typeof setInterval>|undefined;
 const documentWatchers: Array<ReturnType<typeof watchFiles>>=[];
 for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => {
-  quitting = true; source.close();clearInterval(controlTimer);clearTimeout(retry);for(const watcher of documentWatchers)watcher.close(); void sc.close().then(() => process.exit(0));
+  quitting = true; source.close();clearInterval(controlTimer);clearTimeout(retry);for(const watcher of documentWatchers)watcher.close(); void Promise.all([source.stop(),sc.close(),coding.close()]).then(() => process.exit(0));
 });
 await source.start();
 // The platform's separate owner-control door currently has no subscription.
@@ -542,7 +550,7 @@ controlTimer=setInterval(()=>{void control().catch(error=>log(`owner control pen
 for(const path of [resolve(projectDir,'.git'),resolve(projectDir,'.open-autonomy','config.yaml')]){
   if(!existsSync(path))continue;
   try{const watcher=watchFiles(path,{recursive:true},(_event,name)=>{
-      if(path.endsWith('config.yaml')){log('publication configuration changed; restart required');source.close();void sc.close().then(()=>process.exit(1));return;}
+      if(path.endsWith('config.yaml')){log('publication configuration changed; restart required');source.close();void Promise.all([source.stop(),sc.close(),coding.close()]).then(()=>process.exit(1));return;}
       const file=String(name??'').replaceAll('\\','/');
       if(name!=null&&!['HEAD','packed-refs','refs/remotes/origin/main'].includes(file))return;
       documentsDirty=true;requestTick();

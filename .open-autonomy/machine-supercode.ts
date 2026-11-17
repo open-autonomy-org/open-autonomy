@@ -1,19 +1,6 @@
-// One supercode per machine, one release per install (open-autonomy D215, D217): supercode, its orchestrator, its
-// harness SDK and its Teams package are the machine's, which its machine daemon runs too, never a copy in this install.
-// `@volter/supercode` pins the other three exactly; pnpm installs their files through its volume store.
-// The four form one release (supercode RELEASING.md, "One release, one install"). They are found from
-// the machine's `supercode` on PATH (never one in an install's node_modules/.bin): that bin's link target is
-// a native shim or link; its canonical package resolves the three declared dependencies. Each must
-// be there at exactly the version `@volter/supercode` pins, or nothing starts: a client a release behind the machine's
-// daemon or serve was refused by it, and an orchestrator released apart from its native refused its board verbs.
-// A review or a World runs unreleased builds instead, named together: OPEN_AUTONOMY_SUPERCODE_BIN, its
-// OPEN_AUTONOMY_ORCHESTRATOR_BIN and its OPEN_AUTONOMY_HARNESS_SDK (a harness SDK package folder, sdk/typescript).
-// A machine whose supercode runs from a source lock (`<supercode home>/source-lock.json`: supercode pinned to a checked-out
-// commit, its `packaging/npm` package linked onto PATH) is one release too: the lock's tree carries the orchestrator,
-// harness SDK and Teams package at that commit (sdk/orchestrator, sdk/typescript, sdk/teams), and the machine daemon
-// runs that tree's Teams package. Its packaging/npm package pins nothing, because the tree is the release.
-import { sourceProgram } from './source-program.ts';
-import { machineSourceBinding, machinePublishedBinding } from './install-runtime.ts';
+// Installed fleet and coding releases, selected from their own public package closures (ADR 0036).
+// Existing explicit World selections name all fleet inputs; ordinary installs never import a serving source tree.
+import { machinePublishedBinding } from './install-runtime.ts';
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
@@ -29,8 +16,8 @@ export type MachineSupercode = { bin: string; orchestratorEntry: string; harness
 const PINNED = ['@volter/supercode-orchestrator', '@volter/supercode-harness-sdk', '@volter/supercode-teams'];
 
 /** The first `name` on PATH outside any install's own `node_modules/.bin`, or null. */
-function onPath(name: string): string | null {
-  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
+function onPath(name: string, environment = process.env): string | null {
+  for (const dir of (environment.PATH ?? '').split(delimiter)) {
     if (!dir || resolve(dir).endsWith(`${sep}node_modules${sep}.bin`)) continue;
     for (const file of process.platform === 'win32' ? [`${name}.cmd`, `${name}.exe`] : [name]) if (existsSync(join(dir, file))) return join(dir, file);
   }
@@ -50,8 +37,6 @@ export function machineSupercode(): MachineSupercode {
     return { bin: named[0]!, orchestratorEntry: named[1]!, harnessSdk: named[2]!, release: null };
   }
   const refuse = (why: string): never => { throw new Error(`${why}; install supercode (its orchestrator, harness SDK and Teams package come with it, at one release): ${INSTALL}`); };
-  const fromSource = sourceLocked();
-  if (fromSource) return fromSource;
   const retained = machinePublishedBinding();
   if (retained) {
     const machine = json(join(process.env.SUPERCODE_TEAMS_HOME || join(supercodeHome(), 'teams'), 'machine.json'));
@@ -61,68 +46,51 @@ export function machineSupercode(): MachineSupercode {
       orchestratorEntry: join(retained.root, 'node_modules/@volter/supercode-orchestrator/bin/orchestrator.mjs'),
       harnessSdk: join(retained.root, 'node_modules/@volter/supercode-harness-sdk'), release: retained.release };
   }
-  const bin = onPath('supercode') ?? refuse('no supercode is installed on this machine (none on PATH outside an install)');
-  // <prefix>/lib/node_modules/@volter/supercode/bin/supercode.js → the package folder
-  const nativeBin = realpathSync(bin);
-  // pnpm's native sh/cmd shim records the actual target; npm links directly to it.
-  const shim = /(?:^|\n)(?:#|::|@?rem)\s*cmd-shim-target=([^\r\n]+)/i.exec(readFileSync(nativeBin, 'utf8'));
-  const entry = realpathSync(shim ? resolve(dirname(nativeBin), shim[1]) : nativeBin);
-  const pkg = resolve(dirname(entry), '..');
-  const manifest = json(join(pkg, 'package.json'));
-  if (manifest?.name !== '@volter/supercode') refuse(`${bin} is not the npm package @volter/supercode`);
-  const pins = manifest.dependencies ?? {};
-  if (!PINNED.every((name) => pins[name])) refuse(`supercode ${manifest.version} at ${pkg} predates one release per install (it pins no orchestrator, harness SDK and Teams package)`);
-  const roots = new Map(PINNED.map(name => {
-    const directory = createRequire(join(pkg, 'package.json')).resolve.paths(name)?.map(base => join(base, name)).find(base => json(join(base, 'package.json'))?.name === name);
-    return [name, directory ? realpathSync(directory) : null] as const;
-  }));
-  const wrong = PINNED.flatMap((name) => {
-    const found = (roots.get(name) ? json(join(roots.get(name)!, 'package.json'))?.version : null) ?? null;
-    return found === pins[name] ? [] : [`${name} is ${found ?? 'missing'} where supercode ${manifest.version} pins ${pins[name]}`];
-  });
-  if (wrong.length) refuse(`supercode ${manifest.version} at ${pkg} is not one release: ${wrong.join('; ')}`);
+  const { selected, roots } = installedProgram('supercode', '@volter/supercode', PINNED);
   // The machine daemon too: its connector unit must run this release's Teams package. A unit written before one-release
   // installs names a separately installed one; supercode's install or upgrade moves it (its postinstall,
   // lib/release.mjs), and a unit still naming another release is refused here.
   const teams = join(roots.get('@volter/supercode-teams')!, 'bin', 'teams.mjs');
   const stale = daemonEntries().filter((entry) => (existsSync(entry) ? realpathSync(entry) : resolve(entry)) !== teams);
-  if (stale.length) refuse(`the machine daemon runs ${[...new Set(stale)].join(', ')}, not supercode ${manifest.version}'s Teams package (${teams}); reinstall its service: supercode teams connect --install`);
-  return {
-    bin,
-    orchestratorEntry: join(roots.get('@volter/supercode-orchestrator')!, 'bin', 'orchestrator.mjs'),
-    harnessSdk: roots.get('@volter/supercode-harness-sdk')!,
-    release: manifest.version,
-  };
+  if (stale.length) refuse(`the machine daemon runs ${[...new Set(stale)].join(', ')}, not supercode ${selected.release}'s Teams package (${teams}); reinstall its service: supercode teams connect --install`);
+  return selected;
 }
 
 const supercodeHome = () => process.env.SUPERCODE_HOME || (process.env.XDG_CONFIG_HOME ? join(process.env.XDG_CONFIG_HOME, 'supercode') : join(homedir(), '.config', 'supercode'));
 
-/**
- * The machine's supercode when it runs from its source lock: the package on PATH is the lock's tree's packaging/npm, and
- * the three come from that tree at its pinned commit. Null when the package on PATH is not a source-locked tree's.
- */
-function sourceLocked(): MachineSupercode | null {
-  const lock = machineSourceBinding();
-  if (typeof lock?.root !== 'string' || !existsSync(lock.root)) return null;
-  const root = realpathSync(lock.root);
-  const refuse = (why: string): never => { throw new Error(`supercode's source lock at ${root} (commit ${String(lock.commit ?? '?').slice(0, 9)}) ${why}; re-pin it, or install a release: ${INSTALL}`); };
-  const orchestratorEntry = join(root, 'sdk', 'orchestrator', 'bin', 'orchestrator.mjs');
-  const harnessSdk = join(root, 'sdk', 'typescript');
-  const teams = join(root, 'sdk', 'teams', 'bin', 'teams.mjs');
-  const missing = [orchestratorEntry, join(harnessSdk, 'package.json'), teams].filter((path) => !existsSync(path));
-  if (missing.length) refuse(`has no ${missing.join(', ')}`);
-  const selected = sourceProgram(lock), bin = selected.program;
-  if (selected.node) process.env.SUPERCODE_NODE_BIN = selected.node;
-  const machine = json(join(process.env.SUPERCODE_TEAMS_HOME || join(supercodeHome(), 'teams'), 'machine.json'));
-  if (machine?.generation_owner) {
-    const source = machine.release?.source;
-    if (machine.generation_owner !== machine.pid || machine.mail_ready !== true || source?.root !== root || source?.commit !== lock.commit || (source?.binding_verdict ?? source?.binding) !== 'matches')
-      refuse('is not the serving machine generation; activate the coherent machine selection before this kit');
-  } else {
-    const stale = daemonEntries().filter((entry) => (existsSync(entry) ? realpathSync(entry) : resolve(entry)) !== teams);
-    if (stale.length) refuse(`is not what the machine daemon runs (${[...new Set(stale)].join(', ')}, not ${teams})`);
-  }
-  return { bin, orchestratorEntry, harnessSdk, release: typeof lock.supercode === 'string' ? lock.supercode : null };
+/** Resolve exact package dependencies through the selected installed command, never an install-local copy. */
+function installedProgram(command: string, packageName: string, pinned: string[], selectedBin?: string, environment = process.env) {
+  const refuse = (why: string): never => { throw new Error(`${why}; select a complete installed ${packageName} release`); };
+  const bin = selectedBin ?? onPath(command, environment) ?? refuse(`no ${command} is installed on PATH outside an install`);
+  const nativeBin = realpathSync(bin);
+  const shim = /(?:^|\n)(?:#|::|@?rem)\s*cmd-shim-target=([^\r\n]+)/i.exec(readFileSync(nativeBin, 'utf8'));
+  const entry = realpathSync(shim ? resolve(dirname(nativeBin), shim[1]) : nativeBin);
+  const pkg = resolve(dirname(entry), '..'), manifest = json(join(pkg, 'package.json'));
+  if (manifest?.name !== packageName) refuse(`${bin} is not the installed npm package ${packageName}`);
+  const pins = manifest.dependencies ?? {};
+  const roots = new Map(pinned.map(name => {
+    const directory = createRequire(join(pkg, 'package.json')).resolve.paths(name)?.map(base => join(base, name)).find(base => json(join(base, 'package.json'))?.name === name);
+    return [name, directory ? realpathSync(directory) : null] as const;
+  }));
+  const wrong = pinned.flatMap(name => {
+    const found = roots.get(name) ? json(join(roots.get(name)!, 'package.json'))?.version : null;
+    const expected = selectedBin && /^workspace:\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/.test(pins[name] ?? '') ? pins[name].slice(10) : pins[name];
+    return expected && found === expected ? [] : [`${name} is ${found ?? 'missing'} where ${packageName} pins ${pins[name] ?? 'nothing'}`];
+  });
+  if (wrong.length) refuse(`${packageName} ${manifest.version} at ${pkg} is not one release: ${wrong.join('; ')}`);
+  const coding = packageName === '@volter/supercode-agent';
+  return { selected: { bin: entry,
+    orchestratorEntry: join(roots.get(coding ? '@volter/supercode-agent-orchestrator' : '@volter/supercode-orchestrator')!, 'bin', 'orchestrator.mjs'),
+    harnessSdk: roots.get(coding ? '@volter/supercode-agent-sdk' : '@volter/supercode-harness-sdk')!, release: manifest.version } as MachineSupercode, roots };
+}
+
+/** The installed coding owner; a prepared generation may require its exact retained selection. */
+export function machineCodingProgram(environment = process.env, expected?: MachineSupercode): MachineSupercode {
+  const { selected } = installedProgram('supercode-agent', '@volter/supercode-agent',
+    ['@volter/supercode-agent-orchestrator', '@volter/supercode-agent-sdk'], expected?.bin ?? environment.SUPERCODE_CODING_BIN, environment);
+  if (expected && Object.keys(selected).some(key => selected[key as keyof MachineSupercode] !== expected[key as keyof MachineSupercode]))
+    throw new Error('the prepared coding release changed; prepare a new complete kit generation');
+  return selected;
 }
 
 /** The Teams entries this machine's installed connector units run (`<teams home>/service`, teams.rs): a release's
@@ -164,8 +132,13 @@ function exported(dir: string, subpath: string): string {
   return pathToFileURL(join(dir, target)).href;
 }
 
-/** A module of the orchestrator package (`.`, `./apply`, `./apply/doors`), for a dynamic import. */
-export const orchestratorModule = (subpath = '.'): string => exported(resolve(dirname(orchestratorEntry()), '..'), subpath);
+let codingChecked: MachineSupercode | null = null;
+const coding = () => codingChecked ??= machineCodingProgram();
+/** Coding setup and orchestration use Agent's installed package. */
+export const codingOrchestratorModule = (subpath = '.'): string => exported(resolve(dirname(coding().orchestratorEntry), '..'), subpath);
+export const codingSdkModule = (subpath = '.'): string => exported(coding().harnessSdk, subpath);
+export const codingCommand = (args: string[]): string[] => supercodeCommand(args, coding().bin);
+export const codingBin = (): string => coding().bin;
 
 /** A module of the harness SDK package (`.`, `./core`, …), for a dynamic import, checked. */
 export const harnessSdkModule = (subpath = '.'): string => exported(machine().harnessSdk, subpath);

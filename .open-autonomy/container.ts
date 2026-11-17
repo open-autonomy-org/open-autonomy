@@ -1,6 +1,6 @@
 // Container startup for the existing start.ts entrypoint. The valve and reporter
 // stay here; the agent's runtime runs in the prepared World executor: native Hermes, or, where the setup picks
-// another harness, Volter Harness's orchestrator running it as each profile's worker (ADR 0009, as amended). This module
+// another harness, Supercode Agent's orchestrator running it as each profile's worker (ADR 0009, as amended). This module
 // owns its child processes, not container provisioning or restart policy.
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -9,7 +9,7 @@ import { resolve } from 'node:path';
 import { parseEnv } from 'node:util';
 import { codexAccess } from './codex-auth.ts';
 import { checkCredentialDirectory } from './credentials.ts';
-import { startContainerProcess } from './container-process.ts';
+import { containerPrograms, startContainerProcess } from './container-process.ts';
 import { containerMainMoved, mergeImageDenylist, openContainerCodexSandbox, prepareContainerHome, prepareContainerSubscription, renderContainerWorkerForms, writeContainerEnvironment, writeContainerKitRecord } from './container-home.ts';
 import { agentHarness, agentModels, applyAgent, parseAgent, readAgent } from './agent.ts';
 import { TREASURER, prepareTreasurerHome, treasurerBoardEnvironment, treasurerContainer, treasurerDispatch, treasurerPersona } from './container-treasurer.ts';
@@ -49,9 +49,14 @@ export async function startContainer(options: {
   let restartAsked = false;
   let mainWatch: ReturnType<typeof setInterval> | undefined;
   let ending: Promise<void> | undefined;
+  const lifetime = new AbortController(), stopped = new Error('The host is stopping');
+  let inspection: ReturnType<typeof containerPrograms> | undefined;
   let finish!: (code: number) => void;
   const exited = new Promise<number>(resolve => { finish = resolve; });
   const stop = (code: number): Promise<void> => ending ??= (async () => {
+    lifetime.abort(stopped);
+    const inspected = await Promise.allSettled([inspection]);
+    const inspectionFailure = inspected.find(result => result.status === 'rejected' && result.reason !== stopped);
     clearInterval(mainWatch);
     await gateway?.close();
     await treasurer?.close();
@@ -60,7 +65,8 @@ export async function startContainer(options: {
     await Promise.all(services.map(proc => proc.exited));
     clearTimeout(force);
     process.off('SIGTERM', onSignal); process.off('SIGINT', onSignal);
-    finish(code);
+    finish(inspectionFailure ? 1 : code);
+    if (inspectionFailure?.status === 'rejected') throw inspectionFailure.reason;
   })();
   const onSignal = () => { void stop(0); };
   process.on('SIGTERM', onSignal); process.on('SIGINT', onSignal);
@@ -83,6 +89,9 @@ export async function startContainer(options: {
     throw new Error(`Host did not establish ${name}; the agent's runtime was not started`);
   };
   try {
+    inspection = containerPrograms(container, lifetime.signal);
+    const executor = await inspection;
+    if (ending) throw new Error('The host is stopping');
     own('executor', ['docker', 'wait', container]);
     const args = ['--key', `${developerKey}:${port}`];
     // Git must be available before fetching the committed model/configuration.
@@ -187,13 +196,12 @@ export async function startContainer(options: {
     await Promise.race([reporterReady, exited.then(() => { throw new Error('Runtime stopped before SDK reporter readiness'); })]);
     if (ending) throw new Error('A host service stopped during preparation');
     await writeContainerKitRecord({ container, home, version: kit.version });
-    // the orchestrator and Volter Harness are the image's own (its .open-autonomy, installed for Linux)
-    const kitDir = '/opt/agent/.open-autonomy';
+    // The image installs Fleet and Agent as separate selected programs.
     gateway = harness === 'hermes'
       ? startContainerProcess({ container, cwd: workspace, command: ['hermes', 'gateway', 'run'], env })
-      : startContainerProcess({ container, cwd: workspace, command: ['node', `${kitDir}/node_modules/@volter/supercode-orchestrator/bin/orchestrator.mjs`, '--root', home],
+      : startContainerProcess({ container, cwd: workspace, command: [executor.node, executor.coding.orchestratorEntry, '--root', home],
         // the executor is the boundary: a gated Codex worker keeps the kit's sandbox setting there (supercode activation.mjs)
-        env: { ...env, SUPERCODE_BIN: `${kitDir}/node_modules/.bin/supercode`, SUPERCODE_CODEX_SANDBOX: 'executor' } });
+        env: { ...env, SUPERCODE_BIN: executor.fleet.bin, SUPERCODE_CODING_BIN: executor.coding.bin, SUPERCODE_NODE_BIN: executor.node, SUPERCODE_CODEX_SANDBOX: 'executor' } });
     void gateway.exited.then(code => { if (!ending) void stop(code === 75 || (restartAsked && code === 0) ? 75 : 1); });
     const runtimeName = harness === 'hermes' ? 'native Hermes' : `the orchestrator (worker ${harness})`;
     console.log(`host: ${runtimeName} at ${prepared.revision}; ${prepared.dirty ? 'unfinished checkout preserved' : 'checkout current'}; kit ${kit.version}`);

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// The PM's bounded maintenance: inspect releases, land a kit upgrade, request a drained restart, and put a ready
+// The PM's maintenance: inspect releases, land a kit upgrade, request a drained restart, and put a ready
 // release on the Release pull request. Never deploys, tags or publishes. `restart` is the install's deployer pass, run
 // on a schedule by whoever runs the install (SETUP.md, "Keep the install on main": a launchd or cron job every ten
 // minutes, a project's keep job, a PM's pass): it moves a running install onto main (the keeper performs the restart it
@@ -27,11 +27,11 @@ os.execvpe(sys.argv[1], sys.argv[1:], os.environ)`;
 // Package managers do not use the world's HTTP injector. Point pnpm at the same registry
 // the status command queried so the rehearsal release, rather than a cached public package, is applied.
 const packageEnv = process.env.NPM_REGISTRY_TWIN_URL ? { ...process.env, PNPM_CONFIG_REGISTRY: process.env.NPM_REGISTRY_TWIN_URL } : process.env;
-// Bounded: a command that reaches the network and hangs fails here at five minutes rather than holding the pass.
+// Native commands finish on their actual result, never an elapsed allowance.
 const packageCommand = (cmd: string[]): string[] => cmd[0] === 'pnpm' && process.env.NPM_REGISTRY_TWIN_URL
   ? [cmd[0], `--registry=${process.env.NPM_REGISTRY_TWIN_URL}`, ...cmd.slice(1)] : cmd;
 const run = (cmd: string[], cwd = project, env = cmd[0] === 'pnpm' ? packageEnv : process.env): string => {
-  const result = Bun.spawnSync({ cmd: packageCommand(cmd), cwd, env, stdout: 'pipe', stderr: 'pipe', timeout: 300_000 });
+  const result = Bun.spawnSync({ cmd: packageCommand(cmd), cwd, env, stdout: 'pipe', stderr: 'pipe' });
   if (result.exitCode !== 0) throw new Error(`${cmd.slice(0, 3).join(' ')} failed: ${result.stderr.toString().trim()}`);
   return result.stdout.toString().trim();
 };
@@ -200,7 +200,7 @@ if (command === 'ship') {
   const enrolled = existsSync(enrolledFile) ? (JSON.parse(readFileSync(enrolledFile, 'utf8')) as { revision?: string }).revision : undefined;
   if (runningRecord.revision) {
     const healthOnly = runningRecord.revision === enrolled;
-    const enroll = Bun.spawnSync({ cmd: ['bun', resolve(project, '.open-autonomy', 'enroll.ts'), '--project', project, '--home', home, ...(healthOnly ? ['--health-only'] : [])], cwd: project, env: process.env, stdout: 'inherit', stderr: 'inherit', timeout: 120_000 });
+    const enroll = Bun.spawnSync({ cmd: ['bun', resolve(project, '.open-autonomy', 'enroll.ts'), '--project', project, '--home', home, ...(healthOnly ? ['--health-only'] : [])], cwd: project, env: process.env, stdout: 'inherit', stderr: 'inherit' });
     if (enroll.exitCode === 0 && !healthOnly) writeFileSync(enrolledFile, `${JSON.stringify({ revision: runningRecord.revision })}\n`);
     else if (enroll.exitCode !== 0) console.log(`enroll.ts did not complete (${enroll.exitCode ?? enroll.signalCode}); the next pass tries again.`);
   }

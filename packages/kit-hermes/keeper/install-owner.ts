@@ -9,6 +9,7 @@ import { dirname, resolve } from 'node:path';
 import { constants } from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { prepareInstall, readInstall, retireInstalls, type InstallReceipt } from '../base/.open-autonomy/prepare-install.ts';
+import { machineCodingProgram } from '../base/.open-autonomy/machine-supercode.ts';
 import { machinePublishedBinding, runtimeInstallIdentity } from '../base/.open-autonomy/install-runtime.ts';
 
 type Selection = { receipt: string; source: string | null; release?: string | null; native: string | null };
@@ -33,9 +34,8 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
   if (existsSync(socketPath)) {
     const { createConnection } = await import('node:net');
     const present = await new Promise<boolean>((done, reject) => { const socket = createConnection(socketPath);
-      const timer = setTimeout(() => { socket.destroy(); reject(new Error('kit owner socket did not answer; it was left alone')); }, 1000);
-      socket.once('connect', () => { clearTimeout(timer); socket.destroy(); done(true); });
-      socket.once('error', error => { clearTimeout(timer); ['ECONNREFUSED','ENOENT'].includes((error as NodeJS.ErrnoException).code ?? '') ? done(false) : reject(error); }); });
+      socket.once('connect', () => { socket.destroy(); done(true); });
+      socket.once('error', error => { ['ECONNREFUSED','ENOENT'].includes((error as NodeJS.ErrnoException).code ?? '') ? done(false) : reject(error); }); });
     if (present) throw new Error('another kit owner serves this home');
     rmSync(socketPath, { force: true });
   }
@@ -62,8 +62,9 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     if (selected.source && selected.release) throw new Error('kit inputs require one complete machine selection');
     const native = selected.source ? sourceProgram(selected.source) : selected.release ? machinePublishedBinding(envFor(selected))?.program : null;
     if (native && (!selected.native || realpathSync(selected.native) !== realpathSync(native))) throw new Error('kit native differs from its complete machine selection');
+    if (receipt.coding) machineCodingProgram(envFor(selected), receipt.coding);
     const identity = runtimeInstallIdentity({ directory: dirname(receipt.entry), environment: envFor(selected),
-      registry: receipt.registry, archive: receipt.archive ?? undefined });
+      registry: receipt.registry, archive: receipt.archive ?? undefined, coding: receipt.coding });
     if (identity !== receipt.runtimeIdentity || readFileSync(resolve(dirname(receipt.entry), 'node_modules/.open-autonomy-install'), 'utf8').trim() !== identity)
       throw new Error('kit installation identity changed since preparation');
     return receipt;
@@ -73,29 +74,25 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
     const args = [...argv];
     for (const flag of ['--project', '--home', '--prepared-install']) { const at = args.indexOf(flag); if (at >= 0) args.splice(at, 2); }
     const child = spawnWork(() => Bun.spawn({ cmd: [process.execPath, receipt.entry, ...args, '--project', receipt.project, '--home', home, '--stack-child'],
-      env: { ...envFor(selected), OPEN_AUTONOMY_INSTALL_RECEIPT: receipt.receipt, OPEN_AUTONOMY_PROJECT_SOURCE: receipt.sourceProject,
+      env: { ...envFor(selected), ...(receipt.coding ? { SUPERCODE_CODING_BIN: receipt.coding.bin } : {}), OPEN_AUTONOMY_INSTALL_RECEIPT: receipt.receipt, OPEN_AUTONOMY_PROJECT_SOURCE: receipt.sourceProject,
         OPEN_AUTONOMY_KIT_READY_FILE: ready }, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' }), 'bun', { stoppedExitCodes: [75] });
     const stack = { process: child, selected, ready }; starting = stack; restartSelection = selected;
     child.exited.then(code => { if (active !== stack || stopping) return;
       active = null; failure = `kit stack ended (${code})`; write(); wake(); });
     try {
-      let until = Date.now() + 8000, observed = 0;
-      while (!stopping && Date.now() < until) {
+      let observed = '';
+      while (!stopping) {
+        if (child.exitCode !== null || child.signalCode !== null) throw new Error(`prepared kit stack ended (${child.exitCode ?? child.signalCode})`);
         const proof = json(ready);
         if (proof?.pid === child.pid && proof.receipt === receipt.receipt) {
           if (proof.ready === true) return stack;
-          if (Number.isSafeInteger(proof.deadline_ms) && proof.deadline_ms > observed && ['starting', 'kit-command'].includes(proof.progress)) {
-            // A running setup/clone command has its own existing work bound. The readiness probe must not terminate
-            // that work after eight seconds; an idle startup still has only eight seconds to answer its next phase.
-            observed = proof.deadline_ms;
-            until = Math.min(proof.deadline_ms, Date.now() + (proof.progress === 'kit-command' ? 605000 : 8000));
-            progress(proof.progress);
+          if (typeof proof.progress === 'string' && proof.progress !== observed) {
+            observed = proof.progress; progress(observed);
           }
         }
-        if (child.exitCode !== null || child.signalCode !== null) throw new Error(`prepared kit stack ended (${child.exitCode ?? child.signalCode})`);
         await Bun.sleep(25);
       }
-      throw new Error(stopping ? 'kit owner is stopping' : 'prepared kit stack did not answer its owned readiness door');
+      throw new Error('kit owner is stopping');
     } catch (error) {
       await stopStack(stack); throw error;
     } finally { starting = null; }
@@ -103,10 +100,10 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
 
   const stopStack = async (stack: Stack | null) => {
     if (!stack) return;
-    stopWorkChild(stack.process, () => stack.process.kill(constants.signals.SIGTERM), { signal: constants.signals.SIGTERM });
-    // The inner stack gives every exact child its own stop and bounded cleanup. It never owns the board or proxy.
-    const bound = setTimeout(() => stopWorkChild(stack.process, () => stack.process.kill('SIGKILL'), { signal: 'SIGKILL' }), 18000);
-    try { await stack.process.exited; } finally { clearTimeout(bound); rmSync(stack.ready, { force: true }); }
+    if (stack.process.exitCode === null && stack.process.signalCode === null)
+      stopWorkChild(stack.process, () => stack.process.kill(constants.signals.SIGTERM), { signal: constants.signals.SIGTERM });
+    // The inner stack joins its owned children before exiting; the board and proxy remain independently owned.
+    await stack.process.exited; rmSync(stack.ready, { force: true });
   };
   const status = () => ({ version: 1, protocol: 1, runtime: process.execPath, owner: process.pid, pid: active?.process.pid, state: active && active.process.exitCode === null && active.process.signalCode === null ? 'serving' : 'transitioning',
     selected: active?.selected, previous, transaction: pending?.id ?? null, phase: pending?.phase ?? null, failure });
@@ -181,7 +178,7 @@ export async function serveInstallOwner({ project, home, argv }: { project: stri
       const respond = (work: Promise<unknown>) => { void work.then(result => { finish({ ok: true, units }); if (!socket.destroyed) socket.end(JSON.stringify({ result }) + '\n'); },
         error => { finish({ ok: false, units }); if (!socket.destroyed) socket.end(JSON.stringify({ error: error.message }) + '\n'); }); };
       if (request.action === 'status') return respond(Promise.resolve(status()));
-      // A rollback of the held transaction waits behind the transition in flight (its own bound ends it) and says so,
+      // A rollback of the held transaction waits behind the transition in flight and says so,
       // so recovery after a lost coordinator is never refused for arriving while the kit was still activating.
       const behind = busy && ['rollback', 'abort'].includes(request.action) && pending?.id === request.transaction ? busy : null;
       if (busy && !behind) return respond(Promise.reject(new Error('a kit transition is in progress; read status')));

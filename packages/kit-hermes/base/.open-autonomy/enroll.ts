@@ -21,12 +21,13 @@
 //   bun .open-autonomy/enroll.ts [--project <dir>] [--home <dir>] [--health-only]
 // --health-only reads existing native declarations and retries fleet subscriptions; it opens no sessions or sync roots.
 // OPEN_AUTONOMY_SUPERCODE_BIN names another supercode build (a review or a World), as it does for the start.
-import { Database } from 'bun:sqlite';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { basename, isAbsolute, relative, resolve, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { agentHarness, readAgent } from './agent.ts';
-import { supercodeBin as machineSupercode } from './machine-supercode.ts';
+import { machineNode, supercodeBin as machineSupercode } from './machine-supercode.ts';
 
 const argv = process.argv.slice(2);
 const healthOnly = argv.includes('--health-only');
@@ -43,38 +44,39 @@ const env: Record<string, string> = {};
 for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !k.startsWith('HERMES_')) env[k] = v;
 Object.assign(env, { PATH: `${resolve(import.meta.dir, 'node_modules', '.bin')}:${process.env.PATH ?? ''}`, SUPERCODE_BIN: supercodeBin });
 
-// Each act is bounded: a door that does not answer reads as failed, and the next run tries again.
+// Native completion owns each act's outcome. Cancellation joins the direct CLI and both output streams.
 let child: ReturnType<typeof Bun.spawn> | undefined;
-for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(signal, () => { child?.kill('SIGTERM'); process.exit(1); });
-async function run(cmd: string[], cwd: string, boundMs = 120_000): Promise<{ ok: boolean; out: string; err: string }> {
+let cancelled = false;
+for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(signal, () => {
+  cancelled = true;
+  if (!child) process.exit(1);
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  try { child.kill('SIGTERM'); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') say(`cancellation retains native child custody: ${String(error)}`); }
+});
+async function run(cmd: string[], cwd: string): Promise<{ ok: boolean; out: string; err: string }> {
+  if (cancelled) throw new Error('Enrollment cancelled; no further native acts attempted');
   child = Bun.spawn({ cmd, cwd, env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
   const proc = child;
-  const bound = setTimeout(() => proc.kill('SIGTERM'), boundMs);
-  const [out, err, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
-  clearTimeout(bound);
-  return { ok: code === 0, out: out.trim(), err: (proc.signalCode ? `${err}\nno answer within ${boundMs / 1000} s` : err).trim() };
+  const results = await Promise.allSettled([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+  child = undefined;
+  if (cancelled) throw new Error('Enrollment cancelled; native outcome requires owning readback');
+  for (const result of results) if (result.status === 'rejected') throw result.reason;
+  const [out, err, code] = results.map(result => (result as PromiseFulfilledResult<string | number>).value) as [string, string, number];
+  return { ok: code === 0, out: out.trim(), err: err.trim() };
 }
 const last = (text: string) => text.split('\n').at(-1) ?? '';
-/** The Teams agent this home declared for a mailbox agent (by its name, else its profile), from the home's own agent store
- * as supercode's orchestrator reads it (`homeAgentId`, sdk/orchestrator/agents.mjs: keys `<Teams origin>/<team>/agent/<name>`
- * and `…/profile/<profile>` under the selected Teams context), never a path guessed from folder names. */
+/** Fleet owns the declared identity and its store codec. Read it through that installed public helper on Node. */
 async function homeAgent(name: string, profile: string, cwd: string): Promise<string | null> {
   const shown = await run([supercodeBin, 'teams', 'context', 'show', '--json'], cwd);
   let context: { origin?: string; team_id?: string };
-  try { context = JSON.parse(shown.out); } catch { return null; }
-  const file = resolve(home, 'agent-state.sqlite');
-  if (!context.origin || !context.team_id || !existsSync(file)) return null;
-  // A store the orchestrator holds open read-only: a read it refuses is no agent found, said by the caller.
-  let db: Database;
-  try { db = new Database(file, { readonly: true }); } catch { return null; }
-  try {
-    const at = (key: string): string | null => {
-      const stable = `${context.origin}/${context.team_id}/${key}`;
-      return (db.query('SELECT agent_id FROM agent_declaration_heads WHERE org = ? AND key = ?').get(context.team_id!, stable) as { agent_id?: string } | null)?.agent_id
-        ?? (db.query('SELECT id FROM agent_intents WHERE org = ? AND key = ?').get(context.team_id!, stable) as { id?: string } | null)?.id ?? null;
-    };
-    return (name !== profile ? at(`agent/${name}`) : null) ?? at(`profile/${profile}`);
-  } catch { return null; } finally { db.close(); }
+  try { context = JSON.parse(shown.out); } catch { throw new Error(`Cannot read Teams context for ${name}: ${shown.err || shown.out}`); }
+  if (!shown.ok || !context.origin || !context.team_id) throw new Error(`Cannot read Teams context for ${name}: ${shown.err || shown.out}`);
+  const entry = pathToFileURL(createRequire(supercodeBin).resolve('@volter/supercode-teams/native-agent-identity')).href;
+  const found = await run([machineNode(), '--input-type=module', '-e',
+    'const { homeAgentId } = await import(process.argv[1]); console.log(JSON.stringify(homeAgentId(process.argv[2], { org: process.argv[3], server: process.argv[4], name: process.argv[5], profile: process.argv[6] })));',
+    entry, home, context.team_id, context.origin, name, profile], cwd);
+  if (!found.ok) throw new Error(`Cannot read declared Teams identity for ${name}: ${found.err}`);
+  return JSON.parse(found.out);
 }
 /** `target` is strictly inside `base` (both real paths): a relative path with no leading `..`, and not absolute (another
  *  drive on Windows). */

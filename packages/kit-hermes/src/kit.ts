@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { ancestor } from './ancestor.ts';
-import { executingSource } from './source.ts';
+import { executingSource, sourceMode } from './source.ts';
 import { LEGACY_FILES, legacyAgent } from './migrate.ts';
 
 // The kit's version is the package's: one number, in package.json, that a release bumps.
@@ -271,7 +271,9 @@ export async function upgrade(dir: string): Promise<Upgrade> {
   const migration = existsSync(legacy) && !existsSync(lock);
   if ((migration || existsSync(lock) && [...out.written, ...out.merged].includes(hostPackage)) && !out.conflicts.includes(hostPackage)) {
     const hadYarn = existsSync(yarn);
-    try {
+    if (sourceMode()) {
+      out.conflicts.push('.open-autonomy/pnpm-lock.yaml (source render awaits final local kit and SDK artifacts; run `bun .open-autonomy/install-runtime.ts --update-lock --lockfile-only --runtime-package <artifacts>` after packing the final source commit)');
+    } else try {
       if (migration) {
         // Export Bun's exact resolutions and let pnpm import them; neither command installs packages.
         const exported = spawnSync('bun', ['install', '--yarn', '--dry-run', '--ignore-scripts', '--frozen-lockfile'], { cwd: host, encoding: 'utf8', timeout: 120_000 });

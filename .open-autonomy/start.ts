@@ -28,15 +28,16 @@
 //               host — the home's .env names them (OPEN_AUTONOMY_BASE_URL, OPEN_AUTONOMY_PAY_URL) and the word `valve`
 //   reporter    keyless, publishing the home's sessions and board through the valve
 //   gateway     `hermes gateway run` in the checkout, HERMES_HOME=<home>; or, where .open-autonomy/agent.json picks
-//               another harness (`"harness": "codex"`), Volter Harness's orchestrator on the same home, running that
+//               another harness (`"harness": "codex"`), Supercode Agent's orchestrator on the same home, running that
 //               harness as each profile's worker (ADR 0007, as amended)
 // When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
 import { codexAccess } from './codex-auth.ts';
 import { installHostRuntime, runtimeInstallIdentity } from './install-runtime.ts';
-import { machineSupercode, machineNode, supercodeCommand } from './machine-supercode.ts';
+import { machineSupercode, machineCodingProgram, machineNode, supercodeCommand } from './machine-supercode.ts';
 import { agentHarness, agentModels, applyAgent, parseAgent, profileHarness, readAgent, renderWorkerForms, type Setup } from './agent.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { Database } from 'bun:sqlite';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { constants, hostname, tmpdir } from 'node:os';
 import { homedir, userInfo } from 'node:os';
@@ -244,7 +245,7 @@ const committed = committedFrom ?? resolve(project, content);
 const harness = agentHarness(agentSetup);
 // Claude Code runs on a model the valve reaches: every profile's default model names its endpoint (the platform's rail).
 if (Object.entries(agentSetup?.profiles ?? {}).some(([name, p]) => { if (profileHarness(agentSetup, name) !== 'claude-code') return false; const m = p.inference?.default ? p.inference.models?.[p.inference.default] : undefined; return !m?.endpoint && !m?.base_url; })) { console.error(`start: .open-autonomy/agent.json runs a profile on Claude Code; each such profile's default model must name its endpoint (the platform's model rail). No services were started.`); process.exit(1); }
-if (harness !== 'hermes' && !Bun.which('node')) { console.error(`start: .open-autonomy/agent.json picks ${harness}, which Volter Harness's orchestrator runs, and it needs node (22.13 or later) on PATH. No services were started.`); process.exit(1); }
+if (harness !== 'hermes' && !Bun.which('node')) { console.error(`start: .open-autonomy/agent.json picks ${harness}, which Supercode Agent's orchestrator runs, and it needs node (22.13 or later) on PATH. No services were started.`); process.exit(1); }
 if (existsSync(committed)) {
   // The kit's own families are mirrored, not merged: a skill or hook the checkout no longer has leaves the home too.
   for (const family of ['skills/open-autonomy', 'hooks', 'plugins/escalate']) rmSync(resolve(home, family), { recursive: true, force: true });
@@ -369,6 +370,9 @@ spawn('valve', ['bun', resolve(import.meta.dir, 'valve.ts'), '--loopback', ...ke
 //    costs no registry call, which a sealed world could not make.
 const env = agentEnv();
 const selectedMachine = machineSupercode();
+const selectedCoding = machineCodingProgram(env);
+env.SUPERCODE_BIN = selectedMachine.bin;
+env.SUPERCODE_CODING_BIN = selectedCoding.bin;
 env.SUPERCODE_NODE_BIN = machineNode();
 {
   // A committed lock pins the install (frozen); one git does not track (ignored, or left by an older install) is
@@ -376,7 +380,7 @@ env.SUPERCODE_NODE_BIN = machineNode();
   const committed = (file: string) => Bun.spawnSync({ cmd: drop(['git', 'ls-files', '--error-unmatch', relative(project, file)]), cwd: project, env, stdout: 'ignore', stderr: 'ignore' }).exitCode === 0;
   const lock = ['pnpm-lock.yaml'].map((file) => resolve(import.meta.dir, file)).find((file) => existsSync(file) && committed(file));
   const stamp = resolve(import.meta.dir, 'node_modules', '.open-autonomy-install');
-  const runtimeOptions = { directory: import.meta.dir, environment: env, registry: arg('--runtime-registry'), archive: arg('--runtime-package') };
+  const runtimeOptions = { directory: import.meta.dir, coding: selectedCoding, environment: env, registry: arg('--runtime-registry'), archive: arg('--runtime-package') };
   const want = runtimeInstallIdentity(runtimeOptions);
   if ((existsSync(stamp) ? readFileSync(stamp, 'utf8').trim() : '') !== want) {
     await installHostRuntime({ ...runtimeOptions, environment: env, command: drop, frozen: !!lock });
@@ -385,7 +389,7 @@ env.SUPERCODE_NODE_BIN = machineNode();
   }
 }
 // 6. The agent's setup into its home, before anything runs there: each profile's model, settings and jobs, through
-//    Hermes's own functions (Volter Harness's applier), owned by their Hermes ids against a base beside the home. A setup
+//    Hermes's own functions (Supercode Agent's applier), owned by their Hermes ids against a base beside the home. A setup
 //    that cannot be applied stops the start: a gateway on an unrendered home would run on Hermes's default model.
 try {
   const lines = await applyAgent({
@@ -402,6 +406,7 @@ const runtimeFacts = JSON.stringify({ mode: 'bare', kit: (() => { try { return J
 // The installed builds, unless the environment names others: a review or a World runs an unreleased branch's build of
 // supercode and its orchestrator (OPEN_AUTONOMY_SUPERCODE_BIN, OPEN_AUTONOMY_ORCHESTRATOR_BIN) on the same start.
 const orchestratorBin = selectedMachine.orchestratorEntry;
+const codingOrchestratorBin = selectedCoding.orchestratorEntry;
 const supercodeBin = selectedMachine.bin;
 spawn('reporter', ['bun', resolve(import.meta.dir, 'publisher.ts'), '--config', resolve(project, '.open-autonomy', 'config.yaml')], { asAgent: true, env: { ...env, OPEN_AUTONOMY_BASE_URL: baseUrl, OPEN_AUTONOMY_RUNTIME: runtimeFacts, OPEN_AUTONOMY_HARNESS: harness, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin, OPEN_AUTONOMY_PROJECT_REPORTERS: projectReporters.map((p) => p.tag).join(',') } });
 // Each project's reporter: the organization's publication policy under the project's account, its cards (its tenant)
@@ -418,7 +423,7 @@ for (const p of projectReporters) {
 // (it holds the home's gateway lock as Hermes's gateway does, so the two never serve one home at once).
 const gateway = harness === 'hermes'
   ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
-  : spawn('gateway', [machineNode(), orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
+  : spawn('gateway', [machineNode(), codingOrchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin } });
 // A home that declares its board (workflow.yaml, the board IR) has its dispatcher here, a service of this start like the
 // rest, so the board runs only through the install's own start (docs/decisions/0017).
 const boardDeclared = harness !== 'hermes' && existsSync(resolve(home, 'workflow.yaml'));
@@ -434,26 +439,18 @@ if (harness !== 'hermes') {
 // brings it in (runhuman-2 ADR 0063).
 // They are the home's declared agents too (the IR's agent layer, `agents.json`: supercode docs/architecture/orchestrator.md
 // §2.10), so an export names each one it folds into its profile.
-/** The Teams agent this home declared for a mailbox agent (by its name, else its profile), from the home's own agent store
- * as supercode's orchestrator reads it (`homeAgentId`, sdk/orchestrator/agents.mjs: keys `<Teams origin>/<team>/agent/<name>`
- * and `…/profile/<profile>` under the selected Teams context), never a path guessed from folder names. */
+/** The installed Fleet Teams package owns declared home identity and its store codec. */
 function homeAgent(name: string, profile: string): string | null {
-  const shown = Bun.spawnSync({ cmd: drop(supercodeCommand(['teams', 'context', 'show', '--json'], supercodeBin)), cwd: home, env: { ...env, SUPERCODE_BIN: supercodeBin }, stdout: 'pipe', stderr: 'pipe' });
-  let context: { origin?: string; team_id?: string };
-  try { context = JSON.parse(shown.stdout.toString()); } catch { return null; }
-  const file = resolve(home, 'agent-state.sqlite');
-  if (!context.origin || !context.team_id || !existsSync(file)) return null;
-  // A store the orchestrator holds open read-only: a read it refuses is no agent found, said by the caller.
-  let db: Database;
-  try { db = new Database(file, { readonly: true }); } catch { return null; }
-  try {
-    const at = (key: string): string | null => {
-      const stable = `${context.origin}/${context.team_id}/${key}`;
-      return (db.query('SELECT agent_id FROM agent_declaration_heads WHERE org = ? AND key = ?').get(context.team_id!, stable) as { agent_id?: string } | null)?.agent_id
-        ?? (db.query('SELECT id FROM agent_intents WHERE org = ? AND key = ?').get(context.team_id!, stable) as { id?: string } | null)?.id ?? null;
-    };
-    return (name !== profile ? at(`agent/${name}`) : null) ?? at(`profile/${profile}`);
-  } catch { return null; } finally { db.close(); }
+  const shown = Bun.spawnSync({ cmd: drop(supercodeCommand(['teams', 'context', 'show', '--json'], supercodeBin)), cwd: home, env, stdout: 'pipe', stderr: 'pipe' });
+  if (shown.exitCode !== 0) throw new Error(`Cannot read Teams context: ${shown.stderr.toString().trim()}`);
+  const context = JSON.parse(shown.stdout.toString()) as { origin?: string; team_id?: string };
+  if (!context.origin || !context.team_id) throw new Error('Teams context names no origin or organization');
+  const entry = pathToFileURL(createRequire(supercodeBin).resolve('@volter/supercode-teams/native-agent-identity')).href;
+  const found = Bun.spawnSync({ cmd: drop([machineNode(), '--input-type=module', '-e',
+    'const { homeAgentId } = await import(process.argv[1]); console.log(JSON.stringify(homeAgentId(process.argv[2], { org: process.argv[3], server: process.argv[4], name: process.argv[5], profile: process.argv[6] })));',
+    entry, home, context.team_id, context.origin, name, profile]), cwd: home, env, stdout: 'pipe', stderr: 'pipe' });
+  if (found.exitCode !== 0) throw new Error(`Cannot read declared Teams identity for ${name}: ${found.stderr.toString().trim()}`);
+  return JSON.parse(found.stdout.toString());
 }
 const agentLayerFile = resolve(home, 'agents.json');
 const agentLayer = existsSync(agentLayerFile) ? JSON.parse(readFileSync(agentLayerFile, 'utf8')) : {};

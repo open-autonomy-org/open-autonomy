@@ -7,14 +7,12 @@ import { ACCOUNT, NAME, ROOT, SCENARIO, STATE } from './lib.ts';
 const required = (name: string): string => { const v = process.env[name]; if (!v) throw new Error(`Set ${name} (world/README.md)`); return resolve(v); };
 if (!/^[a-z0-9][a-z0-9-]*$/.test(NAME)) throw new Error('VO_WORLD_NAME must be a lowercase World name');
 if (STATE === ROOT || STATE.startsWith(`${ROOT}/`)) throw new Error('WORLD_STATE_ROOT must be outside this checkout');
-// Open Autonomy at main (the platform) and supercode built from main or the branch under review (README: What it runs).
+// The platform source and each installed program's selected release (README: What it runs).
 const oaTree = required('OA_TREE');
 if (!existsSync(resolve(oaTree, 'apps/platform/world.ts'))) throw new Error(`OA_TREE has no apps/platform/world.ts: ${oaTree}`);
-const supercodeTree = required('SUPERCODE_TREE');
-const supercodeBin = ['release', 'debug'].map(p => resolve(supercodeTree, 'target', p, 'supercode')).find(existsSync);
-if (!supercodeBin) throw new Error(`Build supercode in SUPERCODE_TREE first (cargo build -p supercode-cli): no target/{release,debug}/supercode in ${supercodeTree}`);
-const orchestratorBin = resolve(supercodeTree, 'sdk/orchestrator/bin/orchestrator.mjs');
-if (!existsSync(orchestratorBin)) throw new Error(`SUPERCODE_TREE has no sdk/orchestrator/bin/orchestrator.mjs: ${supercodeTree}`);
+const { machineSupercode, machineCodingProgram } = await import(resolve(ROOT, '.open-autonomy/machine-supercode.ts'));
+const fleet = machineSupercode(), coding = machineCodingProgram();
+const supercodeBin = fleet.bin, orchestratorBin = fleet.orchestratorEntry;
 const valve = Number(process.env.VO_VALVE_PORT ?? 19787);
 if (!Number.isInteger(valve) || valve < 1024 || valve > 65000) throw new Error('VO_VALVE_PORT must be an integer between 1024 and 65000');
 // `${TWIN:<vendor>}` is the vendor's P3 pack when WORLD_<VENDOR>_CLI names one; `${TWIN_ROOT:<vendor>}` is always
@@ -29,8 +27,7 @@ const cli = (vendor: string, packs = true): string => {
   return resolve(path);
 };
 const DATA = resolve(STATE, '.volter/worlds', NAME, 'data');
-// The branch's orchestrator under its installed name, first on the World's PATH: a pane (a card's run) carries PATH and
-// no other variable of the services', so its supercode finds the orchestrator by name, as an install finds its own.
+// The selected fleet orchestrator is available to pane sessions through their inherited PATH.
 const binDir = resolve(STATE, 'scenarios', NAME, 'bin');
 mkdirSync(binDir, { recursive: true });
 rmSync(resolve(binDir, 'supercode-orchestrator'), { force: true });
@@ -52,12 +49,7 @@ const handlers = generate('scenario.ts', 'openai.json');
 const anthropicHandlers = generate('anthropic.ts', 'anthropic.json');
 // The platform's gateway: the Merge twin (the twins arc's P3 pack at WORLD_MERGE_CLI) with the Claude profiles' turns.
 const mergeHandlers = generate('merge.ts', 'merge.json');
-// The voice front's turns in the Room's call (row 24), on its realtime provider's socket.
-const realtimeHandlers = generate('realtime.ts', 'realtime.json');
 const mergeCli = process.env.WORLD_MERGE_CLI;
-// The voice front's realtime provider: OpenAI's P3 pack (WORLD_OPENAI_CLI), the vendor the injector names openai.
-const openaiCli = process.env.WORLD_OPENAI_CLI;
-if (!openaiCli || !existsSync(openaiCli)) throw new Error('Set WORLD_OPENAI_CLI to the P3 OpenAI pack (twin-packs-p3/openai/src/cli.ts)');
 if (!mergeCli || !existsSync(mergeCli)) throw new Error('Set WORLD_MERGE_CLI to the P3 Merge pack (twin-packs-p3/merge/src/cli.ts)');
 const config = JSON.parse(readFileSync(resolve(SCENARIO, 'world.config.json'), 'utf8')
   .replace(/\$\{TWIN:([a-z-]+)\}/g, (_, name: string) => cli(name))
@@ -67,8 +59,9 @@ config.metadata.id = NAME;
 Object.assign(config.runtime.environment.values, {
   VO_WORLD_NAME: NAME, WORLD_STATE_ROOT: STATE, VO_SCENARIO_DIR: SCENARIO,
   VO_AGENT_PROJECT: resolve(STACK, 'project'), VO_AGENT_HOME: home, VO_SECRETS: resolve(DATA, 'secrets'), VO_ACCOUNT: ACCOUNT,
-  VO_MERGE_HANDLERS: mergeHandlers, VO_REALTIME_HANDLERS: realtimeHandlers, WORLD_MERGE_CLI: resolve(mergeCli), WORLD_OPENAI_CLI: resolve(openaiCli),
-  VO_SUPERCODE_BIN: supercodeBin, VO_ORCHESTRATOR_BIN: orchestratorBin, VO_SUPERCODE_SDK: resolve(supercodeTree, 'sdk/typescript/client.mjs'),
+  VO_MERGE_HANDLERS: mergeHandlers, WORLD_MERGE_CLI: resolve(mergeCli),
+  VO_SUPERCODE_BIN: supercodeBin, VO_ORCHESTRATOR_BIN: orchestratorBin, VO_SUPERCODE_SDK: resolve(fleet.harnessSdk, 'client.mjs'),
+  VO_CODING_BIN: coding.bin, VO_CODING_ORCHESTRATOR_BIN: coding.orchestratorEntry, VO_CODING_SDK: resolve(coding.harnessSdk, 'client.mjs'), SUPERCODE_CODING_BIN: coding.bin,
   // RH2, when a rehearsal World serves it (company-repo rh2/runbooks/rehearsal): its URL, the organization the account
   // Room is in, the bot's session token and principal, and the owner's principal the Room is opened for.
   // For the account's Slack channel (world/bridge.ts): the owner's RH2 session and the runhuman-2 checkout whose channel
@@ -80,7 +73,7 @@ Object.assign(config.runtime.environment.values, {
 });
 config.services.find((service: { id: string }) => service.id === 'agent').endpoint.port = valve;
 // The second machine's own supercode, when VO_MACHINE_B_SUPERCODE_BIN names a built binary (a machine on another release,
-// or one without a door the first machine's has); unset, it runs SUPERCODE_TREE's like the first.
+// or one without a door the first machine's has); unset, it runs the selected installed Fleet release like the first.
 const machineBBin = process.env.VO_MACHINE_B_SUPERCODE_BIN;
 if (machineBBin) {
   if (!existsSync(machineBBin)) throw new Error(`VO_MACHINE_B_SUPERCODE_BIN is not a file: ${machineBBin}`);
@@ -92,15 +85,13 @@ if (machineBBin) {
 if (process.env.VO_MACHINE_B_CUSTODIAN) config.services.find((service: { id: string }) => service.id === 'machine-b').execution.environment.values.VO_MACHINE_CUSTODIAN = process.env.VO_MACHINE_B_CUSTODIAN;
 if (process.env.VO_MACHINE_B_AFTER_ENROLL === '1') config.services.find((service: { id: string }) => service.id === 'machine-b').execution.environment.values.VO_MACHINE_B_AFTER_ENROLL = '1';
 // The account's Slack channel runs only where a rehearsal RH2 is wired, with the owner's session to install the bridge.
-if (!process.env.VO_RH2_URL || !process.env.VO_RH2_OWNER_TOKEN || !process.env.VO_RH2_ROOT) config.services = config.services.filter((service: { id: string }) => !['rh2-agent', 'slack', 'bridge', 'voice'].includes(service.id));
+if (!process.env.VO_RH2_URL || !process.env.VO_RH2_OWNER_TOKEN || !process.env.VO_RH2_ROOT) config.services = config.services.filter((service: { id: string }) => !['rh2-agent', 'slack', 'bridge'].includes(service.id));
 for (const service of config.services) service.execution.cwd = ROOT;
 // Native probe thresholds deliberately cross so routing is observable after enrollment supplies the one host
 // address. The model's labelled alarm stub makes no resource decisions; this proves neither runaway intervention
 // nor resource-management judgment.
 const healthAlarms = { intervalSec: 5, alarms: { 'memory.free': { below: true, warn: 99, crit: 1, clear: 100, forSec: 0 }, 'process.cpu': { warn: 95, crit: 400, clear: 50, forSec: 10 } } };
-Object.assign(config.runtime.environment.values, { VO_HEALTH_ALARMS: JSON.stringify(healthAlarms), VO_SUPERCODE_TREE: supercodeTree,
-  // `supercode teams …` runs the branch's Teams package (the World's server, `connect`, `machines`, `open --on`).
-  SUPERCODE_TEAMS_ENTRY: resolve(supercodeTree, 'sdk/teams/bin/teams.mjs') });
+Object.assign(config.runtime.environment.values, { VO_HEALTH_ALARMS: JSON.stringify(healthAlarms) });
 const path = resolve(dir, 'world.config.json');
 writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;

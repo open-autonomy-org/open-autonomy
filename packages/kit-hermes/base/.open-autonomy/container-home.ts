@@ -1,9 +1,9 @@
 // Prepare the existing container checkout and native Hermes home before startup.
 // Values travel on Docker stdin, never command arguments or inherited host env.
-import { spawnWork, stopWorkChild } from './work-ledger.ts';
+import { spawnWork } from './work-ledger.ts';
 import { spawn } from 'node:child_process';
 
-async function python(container: string, script: string, input: unknown, bound = 60_000, failed = 'Executor preparation failed; Hermes was not started.'): Promise<string> {
+async function python(container: string, script: string, input: unknown, failed = 'Executor preparation failed; Hermes was not started.'): Promise<string> {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(container)) throw new Error('A container name or ID is required.');
   const child = spawnWork(() => spawn('docker', ['exec', '-i', '--user', 'hermes', container, '/opt/hermes/.venv/bin/python', '-c', script], { stdio: ['pipe', 'pipe', 'pipe'] }), 'node');
   child.stdin.on('error', () => {});
@@ -13,12 +13,11 @@ async function python(container: string, script: string, input: unknown, bound =
   // Scripts print only fixed diagnostics; input and environment values never appear.
   let diagnostic = '';
   child.stderr.on('data', chunk => { diagnostic = (diagnostic + chunk.toString()).slice(-2000); });
-  const timer = setTimeout(() => stopWorkChild(child, () => child.kill('SIGKILL'), { signal: 'SIGKILL' }), bound);
-  try {
-    const code = await new Promise<number>(resolve => { child.once('error', () => resolve(1)); child.once('exit', code => resolve(code ?? 1)); });
-    if (code !== 0) throw new Error(`${failed} ${diagnostic.trim()}`);
-    return Buffer.concat(output).toString();
-  } finally { clearTimeout(timer); }
+  let failure: Error | undefined;
+  child.once('error', error => { failure = error; });
+  const code = await new Promise<number>(resolve => child.once('close', code => resolve(code ?? 1)));
+  if (failure || code !== 0) throw new Error(`${failed} ${diagnostic.trim()}`, { cause: failure });
+  return Buffer.concat(output).toString();
 }
 
 /** Always load configuration from fetched main, including after an interrupted task. A profile named in `without` is
@@ -30,7 +29,7 @@ s=json.load(sys.stdin)
 home=pathlib.Path(s['home']);workspace=pathlib.Path(s['workspace'])
 assert home.is_absolute() and workspace.is_absolute() and home != workspace and home != pathlib.Path('/')
 env={**os.environ,'HOME':str(home),'GIT_TERMINAL_PROMPT':'0'}
-def git(*args): return subprocess.check_output(['git','-C',str(workspace),*args],env=env,stderr=subprocess.DEVNULL,timeout=30)
+def git(*args): return subprocess.check_output(['git','-C',str(workspace),*args],env=env,stderr=subprocess.DEVNULL)
 assert pathlib.Path(git('rev-parse','--show-toplevel').decode().strip()).resolve() == workspace.resolve()
 dirty=bool(git('status','--porcelain').strip())
 git('fetch','--no-tags','origin','+refs/heads/main:refs/remotes/origin/main')
@@ -81,16 +80,16 @@ import json,os,pathlib,subprocess,sys
 s=json.load(sys.stdin)
 home=pathlib.Path(s['home']);workspace=pathlib.Path(s['workspace'])
 env={**os.environ,'HOME':str(home),'HERMES_HOME':str(home),'GIT_TERMINAL_PROMPT':'0'}
-def git(*args): return subprocess.check_output(['git','-C',str(workspace),*args],env=env,stderr=subprocess.DEVNULL,timeout=60).decode()
+def git(*args): return subprocess.check_output(['git','-C',str(workspace),*args],env=env,stderr=subprocess.DEVNULL).decode()
 if git('status','--porcelain','--untracked-files=no').strip(): print(json.dumps({'changed':[]})); sys.exit(0)
 git('fetch','-q','--no-tags','origin','+refs/heads/main:refs/remotes/origin/main')
 main=git('rev-parse','origin/main').strip()
 changed=[]
 if main!=s['since']:
-    diff=subprocess.run(['git','-C',str(workspace),'diff','--name-only',s['since'],main],env=env,capture_output=True,timeout=60)
+    diff=subprocess.run(['git','-C',str(workspace),'diff','--name-only',s['since'],main],env=env,capture_output=True)
     changed=diff.stdout.decode().split() if diff.returncode==0 else None
 print(json.dumps({'main':main,'changed':changed}))
-`, options, 150_000, 'Reading main in the executor failed.');
+`, options, 'Reading main in the executor failed.');
   return JSON.parse(output);
 }
 
@@ -105,14 +104,14 @@ import io,json,os,pathlib,subprocess,sys,tarfile,tempfile
 s=json.load(sys.stdin)
 home=pathlib.Path(s['home']);workspace=pathlib.Path(s['workspace'])
 env={**os.environ,'HOME':str(home),'GIT_TERMINAL_PROMPT':'0'}
-archive=subprocess.check_output(['git','-C',str(workspace),'archive','--format=tar',s['revision'],'hermes'],env=env,stderr=subprocess.DEVNULL,timeout=30)
+archive=subprocess.check_output(['git','-C',str(workspace),'archive','--format=tar',s['revision'],'hermes'],env=env,stderr=subprocess.DEVNULL)
 with tempfile.TemporaryDirectory(prefix='oa-forms-') as temp:
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
         for member in tar.getmembers():
             assert (member.isfile() or member.isdir()) and not pathlib.PurePosixPath(member.name).is_absolute() and '..' not in pathlib.PurePosixPath(member.name).parts
         tar.extractall(temp,filter='data')
     code="import { renderWorkerForms } from '/opt/agent/.open-autonomy/agent.ts'; console.log(JSON.stringify(renderWorkerForms(process.env.OA_FROM, process.env.OA_TO)))"
-    out=subprocess.check_output(['bun','-e',code],env={**env,'OA_FROM':str(pathlib.Path(temp)/'hermes'),'OA_TO':str(home)},timeout=60)
+    out=subprocess.check_output(['bun','-e',code],env={**env,'OA_FROM':str(pathlib.Path(temp)/'hermes'),'OA_TO':str(home)})
 print(out.decode().strip().splitlines()[-1])
 `, options);
   return JSON.parse(output);
@@ -245,9 +244,9 @@ if door and home:
         if f not in have: subprocess.check_call(['git','config','--global','--add',f'url.{door}.insteadOf',f],env=env)
 if (workspace/'.git').exists(): print('present'); sys.exit(0)
 assert not any(workspace.iterdir()) if workspace.exists() else True
-subprocess.check_call(['git','clone','-q',s['origin'],str(workspace)],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=1500)
+subprocess.check_call(['git','clone','-q',s['origin'],str(workspace)],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 print('cloned')
-`, options, 1_560_000); // a first clone of a large repository takes minutes; nothing else here does
+`, options);
   return output.trim() as 'cloned' | 'present';
 }
 

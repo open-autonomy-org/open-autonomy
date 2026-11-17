@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 // The account manager in RH2 (supercode ADR 0017, RFC 0020 rows 20-24): its own agent principal, the one the
 // organization document declares and seats in the account Room. The owner issues that principal a token at RH2's
-// agent-token door and the install's home keeps it (`supercode orchestrator apps install rh2-agent … --profile
+// agent-token door and the install's home keeps it (`supercode-agent orchestrator apps install rh2-agent … --profile
 // account-manager`); the agent's channel then answers every line of its Room's conversation as that principal, and its
 // DM and its call are the same participant.
 //
-// Environment: PORT (the World's), VO_RH2_URL, VO_RH2_ORGANIZATION, VO_RH2_OWNER_TOKEN, VO_SUPERCODE_BIN,
-// VO_ORCHESTRATOR_BIN, VO_AGENT_HOME (the install's home), VOLTER_WORLD_DATA.
+// Environment: PORT (the World's), VO_RH2_URL, VO_RH2_ORGANIZATION, VO_RH2_OWNER_TOKEN, VO_CODING_BIN,
+// VO_CODING_ORCHESTRATOR_BIN, VO_AGENT_HOME (the install's home), VOLTER_WORLD_DATA.
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -37,8 +37,8 @@ if (!existsSync(record)) {
   const { token } = await door<{ token: string }>('POST', `/organizations/${organization}/agents/${principal}/tokens`, { label: `${agent}-channel` });
   const tokenFile = resolve(dir, 'agent.token');
   writeFileSync(tokenFile, token, { mode: 0o600 });
-  const installed = Bun.spawnSync({ cmd: [need('VO_SUPERCODE_BIN'), 'orchestrator', 'apps', 'install', 'rh2-agent', '--root', home, '--origin', rh2, '--organization', organization, '--principal', principal, '--token-file', tokenFile, '--profile', agent],
-    env: { ...process.env, SUPERCODE_ORCHESTRATOR_ENTRY: need('VO_ORCHESTRATOR_BIN') }, stdout: 'pipe', stderr: 'pipe' });
+  const installed = Bun.spawnSync({ cmd: [need('VO_CODING_BIN'), 'orchestrator', 'apps', 'install', 'rh2-agent', '--root', home, '--origin', rh2, '--organization', organization, '--principal', principal, '--token-file', tokenFile, '--profile', agent],
+    env: { ...process.env, SUPERCODE_ORCHESTRATOR_ENTRY: need('VO_CODING_ORCHESTRATOR_BIN'), SUPERCODE_CODING_BIN: need('VO_CODING_BIN') }, stdout: 'pipe', stderr: 'pipe' });
   rmSync(tokenFile, { force: true });
   if (installed.exitCode !== 0 || !existsSync(record)) throw new Error(`apps install rh2-agent: ${installed.stderr.toString().trim().split('\n').at(-1)}`);
 }

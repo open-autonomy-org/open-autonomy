@@ -11,6 +11,7 @@ export class BoardEventSource {
   private closed = false;
   private ready!: () => void;
   private pendingSnapshot?: Map<string, any>;
+  private following?: Promise<void>;
   constructor(private options: {command: string[]; stateFile: string; env: Record<string,string>; changed: () => Promise<void>; log: (message:string)=>void}) {
     if(existsSync(options.stateFile)){
       const saved=JSON.parse(readFileSync(options.stateFile,'utf8'));
@@ -19,9 +20,10 @@ export class BoardEventSource {
   }
   start(): Promise<void> {
     const ready=new Promise<void>(resolve=>{this.ready=resolve;});
-    void this.follow();return ready;
+    this.following=this.follow();void this.following.catch(error=>this.options.log(`event source stopped: ${(error as Error).message}`));return ready;
   }
-  close(): void {this.closed=true;this.child?.kill('SIGTERM');}
+  close(): void {this.closed=true;if(this.child?.exitCode===null&&this.child.signalCode===null)this.child.kill('SIGTERM');}
+  async stop(): Promise<void> {this.close();await this.following;}
   private save(): void {
     const temporary=`${this.options.stateFile}.${process.pid}.tmp`;
     writeFileSync(temporary,JSON.stringify({version:1,cursor:this.cursor,cards:[...this.cards]})+'\n',{mode:0o600});
@@ -38,7 +40,9 @@ export class BoardEventSource {
     while(!this.closed){
       const command=[...this.options.command,...(this.cursor?['--after',this.cursor]:[])];
       const child=spawn(command[0],command.slice(1),{env:this.options.env,stdio:['ignore','pipe','inherit']});this.child=child;
-      const exited=new Promise<void>(resolve=>{child.once('error',error=>{this.options.log(`event source unavailable: ${error.message}`);resolve();});child.once('exit',()=>resolve());});
+      let failure: Error|undefined;
+      const exited=new Promise<void>((resolve,reject)=>{child.once('error',error=>{failure=error;this.options.log(`event source unavailable: ${error.message}`);});child.once('close',()=>failure?reject(failure):resolve());});
+      void exited.catch(()=>{});
       const lines=createInterface({input:child.stdout!});
       try{
         for await(const line of lines){
@@ -62,7 +66,7 @@ export class BoardEventSource {
           lines.resume();
         }
       }catch(error){if(!this.closed)this.options.log(`event source interrupted: ${(error as Error).message}`);}
-      finally{this.pendingSnapshot=undefined;lines.close();child.kill('SIGTERM');await exited;this.child=undefined;}
+      finally{this.pendingSnapshot=undefined;lines.close();child.stdout?.resume();if(child.exitCode===null&&child.signalCode===null)child.kill('SIGTERM');await exited;this.child=undefined;}
       if(!this.closed)await Bun.sleep(5000); // reconnect retained changes; never reload all cards
     }
   }

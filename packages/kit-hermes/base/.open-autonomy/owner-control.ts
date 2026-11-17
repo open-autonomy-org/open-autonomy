@@ -4,10 +4,10 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { OpenAutonomy } from './sdk/client.ts';
-import type { SupercodeHarnessClient, JobMutationOutcome } from '@volter/supercode-harness-sdk';
-import { harnessSdkModule } from './machine-supercode.ts';
-// the machine's harness SDK (machine-supercode.ts)
-const { SupercodeRpcError: RpcError } = await import(harnessSdkModule());
+import type { SupercodeHarnessClient, JobMutationOutcome } from '@volter/supercode-agent-sdk';
+import { codingSdkModule } from './machine-supercode.ts';
+// the installed Agent SDK (machine-supercode.ts)
+const { SupercodeRpcError: RpcError } = await import(codingSdkModule());
 import { acquirePublicationLease, savePublicationFile, type PublicationOwnerLease, type LocalPublicationLease } from './publication.ts';
 import { NativeRuntime } from './native-runtime.ts';
 import { measureWork } from './work-ledger.ts';
@@ -185,6 +185,7 @@ export class OwnerController {
   private work?: Promise<void>;
   private again = false;
   private stopping = false;
+  private closing?: Promise<void>;
   private reported = '';
   private readonly nativeAbort = new AbortController();
   private readonly mutationAbort = new AbortController();
@@ -283,14 +284,17 @@ export class OwnerController {
     const digest = `${state}|${note ?? ''}`;
     if (digest !== this.reported && (await oa.reportState(state, note)).ok) { this.reported = digest; this.options.log(`operating state ${state}${note ? ` (${note})` : ''}`); }
   }
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
+    if (this.closing) return this.closing;
     this.stopping = true; this.again = false; clearInterval(this.timer);
-    this.nativeAbort.abort(); this.options.abort();
-    if (!this.work) return;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    await Promise.race([this.work, new Promise<void>(resolve => { timer = setTimeout(resolve, 10_000); })]);
-    if (timer) clearTimeout(timer);
-    this.mutationAbort.abort();
-    await this.work;
+    this.closing = Promise.resolve().then(async () => {
+      const errors: unknown[] = [];
+      try { this.nativeAbort.abort(); } catch (error) { errors.push(error); }
+      try { this.mutationAbort.abort(); } catch (error) { errors.push(error); }
+      try { this.options.abort(); } catch (error) { errors.push(error); }
+      try { await this.work; } catch (error) { errors.push(error); }
+      if (errors.length) throw new AggregateError(errors, 'owner control shutdown failed');
+    });
+    return this.closing;
   }
 }

@@ -27,11 +27,12 @@ import { dirname, join, resolve } from 'node:path';
 import { KIT, check, readKit } from './kit.ts';
 import { worldConfig } from './world-config.ts';
 import { sourceEnvironment } from './source.ts';
+import { machineSupercode, machineCodingProgram } from '../base/.open-autonomy/machine-supercode.ts';
 
 export interface RuntimeOpts { runtime?: string; secrets?: string; valve: number; provider?: string; dockerHost?: string; prepareVolumes: boolean }
 const say = (m: string) => console.log(m);
 const MARK = 'written by create-open-autonomy runtime';
-const run = (cmd: string[], cwd?: string, timeout = 120_000) => spawnSync(cmd[0], cmd.slice(1), { cwd, encoding: 'utf8', timeout });
+const run = (cmd: string[], cwd?: string) => spawnSync(cmd[0], cmd.slice(1), { cwd, encoding: 'utf8' });
 const ok = (r: ReturnType<typeof run>): boolean => r.status === 0;
 const out = (r: ReturnType<typeof run>): string => (r.stdout ?? '').trim();
 
@@ -65,7 +66,7 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
   // the treasurer's home, which only its executor mounts (container/executor.ts `up treasurer`)
   const treasurerVolume = `${container}-treasurer`;
   const dockerEnv = { ...process.env, ...(opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {}) };
-  const docker = (args: string[]) => spawnSync('docker', args, { encoding: 'utf8', timeout: 30_000, env: dockerEnv });
+  const docker = (args: string[]) => spawnSync('docker', args, { encoding: 'utf8', env: dockerEnv });
   for (const name of ['agent.env', 'treasurer.env', 'github-app.json']) if (!existsSync(join(secrets, name))) throw new Error(`${join(secrets, name)} is missing; the container runtime needs the platform keys and the project's GitHub App (setup prepares them)`);
 
   // ---- the release: the kit at this revision, dependencies installed ----
@@ -80,7 +81,7 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
     const extract = spawnSync('tar', ['-x', '-C', release], { input: archive.stdout });
     if (extract.status !== 0) throw new Error(`could not extract the kit into ${release}: ${extract.stderr?.toString().trim()}`);
     // A new release directory relocates source links: prepare its own native lock through the same graph-aware door.
-    const install = run([process.execPath, join(kitDir, 'install-runtime.ts'), '--update-lock'], kitDir, 300_000);
+    const install = run([process.execPath, join(kitDir, 'install-runtime.ts'), '--update-lock'], kitDir);
     if (!ok(install)) throw new Error(`runtime dependency preparation in ${kitDir} failed: ${(install.stderr ?? '').trim()}`);
     writeFileSync(join(release, 'source.json'), `${JSON.stringify({ repository: account, revision: rev, kit: KIT.version }, null, 2)}\n`);
     say(`release: ${release}`);
@@ -100,13 +101,12 @@ export function runtime(dir: string, opts: RuntimeOpts): void {
     }
   }
   {
-    // The image installs supercode from npm at the machine's release. A machine whose supercode runs from its source lock
-    // (machine-supercode.ts) may run a version npm doesn't have: the image then takes the release its locked tree
-    // descends from, the tree's last release tag.
-    const IMAGE_SUPERCODE = `V=$(supercode --version | cut -d' ' -f2); pnpm view "@volter/supercode@$V" version >/dev/null 2>&1 && echo "$V" || git -C "$(node -p "const h=process.env.SUPERCODE_HOME||require('path').join(require('os').homedir(),'.config','supercode'); require(require('path').join(h,'source-lock.json')).root")" describe --tags --abbrev=0 --match 'v[0-9]*' | sed 's/^v//'`;
+    const fleet = machineSupercode(), coding = machineCodingProgram();
+    if (!fleet.release || !coding.release) throw new Error('executor images require installed fleet and Agent releases');
+    const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
     const build = worldConfig({ id: `${project}-image`, description: 'Build the executor image through World against the reviewed checkout; down keeps the image.',
       env: opts.dockerHost ? { DOCKER_HOST: opts.dockerHost } : {},
-      service: { id: 'build', cwd: resolve(dir), up: ['sh', '-c', `sh container/build-hermes.sh && docker build --target managed --build-arg SUPERCODE_VERSION="$(${IMAGE_SUPERCODE})" --file container/Dockerfile --tag ${image} .`], down: ['true'], status: ['docker', 'image', 'inspect', '--format', '{{.Id}}', image] } });
+      service: { id: 'build', cwd: resolve(dir), up: ['sh', '-c', `sh container/build-hermes.sh && docker build --target managed --build-arg SUPERCODE_VERSION=${quote(fleet.release)} --build-arg SUPERCODE_AGENT_VERSION=${quote(coding.release)} --file container/Dockerfile --tag ${image} .`], down: ['true'], status: ['docker', 'image', 'inspect', '--format', '{{.Id}}', image] } });
     writeFileSync(join(runtimeDir, 'build-world.json'), `${JSON.stringify(build, null, 2)}\n`);
     say(`build: bun ${worldCli} up ${join(runtimeDir, 'build-world.json')} --env-out=${join(runtimeDir, 'build.env')} --root ${root}   (then doctor and down ${project}-image)`);
   }

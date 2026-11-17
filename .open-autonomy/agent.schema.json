@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://supercode.volter.ai/schemas/agent-setup.json",
   "title": "Agent setup",
-  "description": "A repository's agent setup (.open-autonomy/agent.json): each profile's Inference, jobs and harness settings, applied to its home by Volter Harness's applier (sdk/orchestrator/apply). Edited in Git Notes with supercode-ui's AgentSetupEditor; each save is proposed as a pull request. Copied from supercode-ui (@volter/supercode-ui/agent-setup.schema.json) by the kit, which keeps it current.",
+  "description": "A repository's agent setup (.open-autonomy/agent.json): each profile's inference, jobs and harness settings, applied to its native home by the installed Supercode Agent applier.",
   "x-git-notes-widget": "supercode-agent-setup",
   "type": "object",
   "required": [

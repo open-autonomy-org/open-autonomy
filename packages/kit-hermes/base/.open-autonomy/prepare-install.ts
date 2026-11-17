@@ -1,18 +1,19 @@
 // Prepare one immutable kit/project input before asking a serving keeper to change. No home, port or service is
 // touched. Dependency installation finishes in the new detached worktree; a refusal preserves the serving inputs.
 // After an activation finishes, the keeper retires the generations no one needs any more (retireInstalls).
-import { spawnSyncWork, spawnWork, stopWorkChild } from './work-ledger.ts';
+import { spawnSyncWork, spawnWork } from './work-ledger.ts';
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { installHostRuntime, runtimeInstallIdentity, machinePublishedBinding, machineSourceReceipt } from './install-runtime.ts';
+import { machineCodingProgram, type MachineSupercode } from './machine-supercode.ts';
 import { assertCompleteSource, checkoutCompleteSource } from './complete-source.ts';
 
 export type InstallReceipt = { version: 1; kind: 'open-autonomy-install'; home: string; sourceProject: string; project: string;
   entry: string; revision: string; kitVersion: string; runtimeIdentity: string; source: string | null; release: string | null; registry: string; archive: string | null; receipt: string;
-  initiator: Initiator };
+  coding?: MachineSupercode; initiator: Initiator };
 // Who asked for this preparation. Supercode's machine owner, which runs it for an activation, relays the activating
 // command's own reading in SUPERCODE_INITIATOR stamped with the owner's pid; it is taken only from this process's actual
 // parent, so a value left in a long-lived environment never names a later preparation, and it is re-checked here field
@@ -133,11 +134,12 @@ export async function prepareInstall({ project, home, revision, source = null, r
   const { agentHarness, readAgent } = await import(resolve(host, 'agent.ts'));
   const setup = readAgent(snapshot);
   if (!setup || (kit.kit !== 'ir' && agentHarness(setup) === 'hermes')) throw new Error('this candidate lacks the native gateway readiness protocol; the serving install was preserved');
-  const identity = runtimeInstallIdentity({ directory: host, environment: env, registry, archive });
+  const coding = machineCodingProgram(env);
+  const identity = runtimeInstallIdentity({ directory: host, environment: env, registry, archive, coding });
   writeFileSync(resolve(host, 'node_modules/.open-autonomy-install'), `${identity}\n`);
   assertCompleteSource(snapshot, commit);
   const receipt: InstallReceipt = { version: 1, kind: 'open-autonomy-install', home, sourceProject: project, project: snapshot,
-    entry: resolve(host, 'start.ts'), revision: commit, kitVersion: kit.version, runtimeIdentity: identity, source, release, registry, archive: archive ?? null,
+    entry: resolve(host, 'start.ts'), revision: commit, kitVersion: kit.version, runtimeIdentity: identity, source, release, registry, archive: archive ?? null, coding,
     receipt: resolve(directory, 'install.json'), initiator: await installInitiator(environment, supercodeRootOf(source, release)) };
   writeFileSync(receipt.receipt, JSON.stringify(receipt) + '\n', { mode: 0o600 });
   return receipt;
@@ -174,9 +176,7 @@ export async function retireInstalls({ home, project, serving, rollback }: { hom
   if (dirname(current) !== installs) throw new Error(`the serving receipt ${serving} is not a generation in ${installs}`);
   const read = async (cmd: string[]): Promise<{ out: string; code: number | null }> => {
     const child = spawnWork(() => Bun.spawn({ cmd, stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' }));
-    const bound = setTimeout(() => stopWorkChild(child, () => child.kill('SIGKILL'), { signal: 'SIGKILL' }), 60000);
-    try { const [out, code] = await Promise.all([new Response(child.stdout).text(), child.exited]); return { out, code }; }
-    finally { clearTimeout(bound); }
+    const [out, code] = await Promise.all([new Response(child.stdout).text(), child.exited]); return { out, code };
   };
   // Every running process's command line, working directory and open files, as one text. A listing that does not
   // show this process was filtered or sandboxed and proves nothing about the others.
