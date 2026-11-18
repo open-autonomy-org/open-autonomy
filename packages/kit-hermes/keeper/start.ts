@@ -42,10 +42,12 @@
 //               harness as each profile's worker (ADR 0007, as amended)
 //   board       the board's dispatcher (`workflow serve`), where the home declares workflow.yaml (ADR 0017)
 //   channel     one per mail agent's Slack or Jira channel, carrying it to the agent's mailbox
-// When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts.
+// When any of them ends, all of them end and this exits 1: the supervisor outside (you, launchd, Docker) restarts. When
+// this process itself ends abruptly (SIGKILL, SIGBUS), it can stop nothing, and the next start of a prepared install
+// ends the native gateway it left serving the home, through that gateway's own stop door, before starting its own.
 import { initializeWorkLedger, closeWorkLedger, startWork, measureWork, spawnSyncWork, spawnWork, stopWorkChild } from '../base/.open-autonomy/work-ledger.ts';
 import type { Setup } from '../base/.open-autonomy/agent.ts';
-import { machineSupercode, machineNode } from '../base/.open-autonomy/machine-supercode.ts';
+import { machineSupercode, machineNode, supercodeCommand } from '../base/.open-autonomy/machine-supercode.ts';
 import { serveInstallOwner } from './install-owner.ts';
 import { acquireBoard, boardDeclaration, boardOwnerAnswers, retainedBoard } from './retained-board.ts';
 import { readInstall } from '../base/.open-autonomy/prepare-install.ts';
@@ -703,6 +705,26 @@ const boardDeclared = onNative && existsSync(resolve(home, 'workflow.yaml'));
 // The runtime on the home: Hermes's gateway, or the orchestrator running the picked harness as each profile's worker
 // (it holds the home's gateway lock as Hermes's gateway does, so the two never serve one home at once). The board's one
 // dispatcher is the `workflow serve` below; the orchestrator runs no round (supercode's orchestrator §2.9).
+// The orchestrator is this stack's child and ends with it. A stack that ended abruptly ran none of its stops, and its
+// orchestrator can go on serving the home with nothing above it; this stack's orchestrator then only waits for the
+// home's claim (supercode's runtime) past its readiness bound, at every restart. A prepared stack is the one stack its
+// kit owner runs, and that owner holds the home alone, so an orchestrator already serving the home when this stack
+// starts is one an earlier stack left behind: it is ended through its own stop door first. Should the door fail, the
+// home's gateway lock still decides who serves it.
+async function endOrphanedGateway(): Promise<void> {
+  const door = (verb: 'status' | 'stop') => command(drop(supercodeCommand(['orchestrator', verb, '--root', home, '--json'], supercodeBin)),
+    { cwd: home, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, boundMs: 30_000 });
+  const read = await door('status');
+  let status: { state?: string; lease?: { pid?: number; started_at?: string } } | undefined;
+  try { status = JSON.parse(read.stdout); } catch { /* no answer */ }
+  if (read.exitCode !== 0 || !status) return say(`gateway: the home's orchestrator status was not read (${read.stderr.trim() || `exit ${read.exitCode}`}); its gateway lock decides who serves it`);
+  if (status.state !== 'up') return;
+  const named = `pid ${status.lease?.pid} (since ${status.lease?.started_at})`;
+  say(`gateway: ${home} is still served by ${named}, an orchestrator whose stack is gone; ending it through its stop door`);
+  const stopped = await door('stop');
+  say(stopped.exitCode === 0 ? `gateway: ${named} stopped` : `gateway: ${named} did not stop through its door (${stopped.stderr.trim() || `exit ${stopped.exitCode}`}); its gateway lock decides who serves the home`);
+}
+if (onNative && prepared) await endOrphanedGateway();
 const gateway = !onNative
   ? spawn('gateway', ['hermes', 'gateway', 'run'], { asAgent: true, stoppedExitCodes: [75], env: { ...env, HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1' } })
   : spawn('gateway', [machineNode(), orchestratorBin, '--root', home], { asAgent: true, env: { ...env, SUPERCODE_BIN: supercodeBin, SUPERCODE_ORCHESTRATOR_ENTRY: orchestratorBin }, stdout: 'pipe' });
