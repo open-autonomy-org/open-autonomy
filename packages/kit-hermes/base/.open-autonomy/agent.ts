@@ -18,7 +18,8 @@ export type Model = { provider?: string; model?: string; endpoint?: string; base
 export type Package = { schema_version: 1; inference?: { models?: Record<string, Model>; default?: string; unattended?: string }; jobs?: Record<string, unknown>; extensions?: Record<string, { config?: Record<string, unknown> }> };
 /**
  * An agent with a mailbox (supercode docs/adr/0008-agent-mailbox.md): its main session runs `profile` in a pane the
- * start opens once (`program`, `claude` or `codex`), declared with supercode so roots addressed to the agent reach it.
+ * owner opens deliberately (`program`, `claude` or `codex`); enrollment reconciles its existing Supercode mailbox
+ * metadata so roots addressed to the agent retain the selected main.
  * `owners_account_manager` makes it the owner's account manager (RFC 0020 decision 17); `channel.slack` and
  * `channel.jira` carry an engagement's Slack channels and its client's Jira ticket comments to its mailbox.
  */
@@ -27,7 +28,7 @@ export type MailAgent = {
   program?: string;
   idle_minutes?: number;
   owners_account_manager?: boolean;
-  /** Explicitly request an instance pinned to every enrolled machine. The fleet resource manager does not request this. */
+  /** Require an existing mailbox on every online enrolled machine; enrollment never opens its instance. */
   every_machine?: boolean;
   /** Mailed the machine-health alarms of this machine and of every machine enrolled in its Teams context,
    *  at the same retained host agent address (supercode sdk/health: a native reading, named with its release). */

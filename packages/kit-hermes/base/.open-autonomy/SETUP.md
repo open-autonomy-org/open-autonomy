@@ -729,8 +729,10 @@ The start only starts and stops the install's processes. Two things it does not 
 - **Moving onto main.** When main moved what the install runs on (its content folder or `.open-autonomy/`) or a kit
   release landed, the pass asks the start for a drained restart, whatever the board holds.
 - **Enrolling the install on this machine.** Once the stack runs a revision not yet enrolled, the pass runs
-  `.open-autonomy/enroll.ts`: each mail agent of `agent.json` declared with its main session opened, an `every_machine`
-  agent's instance on each other online machine, and the checkout in the machine's workspace map. Later passes run
+  `.open-autonomy/enroll.ts`: existing mail-agent metadata reconciled, `every_machine` declarations read on each
+  other online machine, and the checkout registered in the machine's workspace map. A missing mailbox requires its
+  owner to run `supercode agent declare <name> --open <program> --folder <profile>` on that machine deliberately.
+  Enrollment and retries never open a session or select another main. Later passes run
   `enroll.ts --health-only`: native declarations supply the host addresses subscribed on every online machine,
   including machines that became reachable after the revision was enrolled. This opens no additional sessions.
 
