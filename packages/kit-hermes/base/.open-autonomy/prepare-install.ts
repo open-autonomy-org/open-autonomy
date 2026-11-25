@@ -2,7 +2,7 @@
 // touched. Dependency installation finishes in the new detached worktree; a refusal preserves the serving inputs.
 // After an activation finishes, the keeper retires the generations no one needs any more (retireInstalls).
 import { spawnSyncWork, spawnWork, stopWorkChild } from './work-ledger.ts';
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, cpSync, existsSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, join, resolve, sep } from 'node:path';
@@ -112,35 +112,39 @@ export async function prepareInstall({ project, home, revision, source = null, r
   if (!/^[0-9a-f]{40,64}$/.test(commit)) throw new Error('install preparation has no exact project commit');
   const directory = resolve(home, '..', 'installs', `${commit.slice(0, 12)}-${randomUUID()}`), snapshot = resolve(directory, 'project');
   mkdirSync(directory, { recursive: true, mode: 0o700 });
-  // A failed preparation stays for diagnosis until the next activation finishes. Preparation itself deletes, rewrites
-  // or checks out no existing generation.
-  await checkoutCompleteSource(project, snapshot, commit, run, resolve(home, '..', 'submodule-stores'));
-  const host = resolve(snapshot, '.open-autonomy');
-  if (archive) {
-    const copied = resolve(directory, statSync(archive).isDirectory() ? 'artifacts' : 'runtime.tgz');
-    cpSync(realpathSync(archive), copied, { recursive: true, errorOnExist: true, force: false }); archive = copied;
-  }
-  const env = { ...environment };
-  delete env.SUPERCODE_SOURCE_CANDIDATE; delete env.SUPERCODE_RELEASE_RECEIPT;
-  if (source) env.SUPERCODE_SOURCE_CANDIDATE = realpathSync(source);
-  if (release) env.SUPERCODE_RELEASE_RECEIPT = release;
-  release = machinePublishedBinding(env)?.receipt ?? null;
-  await installHostRuntime({ directory: host, environment: env, frozen: existsSync(resolve(host, 'pnpm-lock.yaml')),
-    registry, archive });
-  const keeper = resolve(host, 'node_modules/create-open-autonomy/keeper/install-owner.ts');
-  if (!existsSync(keeper)) throw new Error('the prepared kit predates serving install handovers');
-  const kit = JSON.parse(readFileSync(resolve(host, 'kit.json'), 'utf8'));
-  const { agentHarness, readAgent } = await import(resolve(host, 'agent.ts'));
-  const setup = readAgent(snapshot);
-  if (!setup || (kit.kit !== 'ir' && agentHarness(setup) === 'hermes')) throw new Error('this candidate lacks the native gateway readiness protocol; the serving install was preserved');
-  const identity = runtimeInstallIdentity({ directory: host, environment: env, registry, archive });
-  writeFileSync(resolve(host, 'node_modules/.open-autonomy-install'), `${identity}\n`);
-  assertCompleteSource(snapshot, commit);
-  const receipt: InstallReceipt = { version: 1, kind: 'open-autonomy-install', home, sourceProject: project, project: snapshot,
-    entry: resolve(host, 'start.ts'), revision: commit, kitVersion: kit.version, runtimeIdentity: identity, source, release, registry, archive: archive ?? null,
-    receipt: resolve(directory, 'install.json'), initiator: await installInitiator(environment, supercodeRootOf(source, release)) };
-  writeFileSync(receipt.receipt, JSON.stringify(receipt) + '\n', { mode: 0o600 });
-  return receipt;
+  // The preparation holds its generation open until it returns or fails, so retirement sees a running preparation as
+  // a process that uses it. A failed or interrupted one stays for diagnosis until the next activation retires it.
+  // Preparation itself deletes, rewrites or checks out no existing generation.
+  const held = openSync(directory, 'r');
+  try {
+    await checkoutCompleteSource(project, snapshot, commit, run, resolve(home, '..', 'submodule-stores'));
+    const host = resolve(snapshot, '.open-autonomy');
+    if (archive) {
+      const copied = resolve(directory, statSync(archive).isDirectory() ? 'artifacts' : 'runtime.tgz');
+      cpSync(realpathSync(archive), copied, { recursive: true, errorOnExist: true, force: false }); archive = copied;
+    }
+    const env = { ...environment };
+    delete env.SUPERCODE_SOURCE_CANDIDATE; delete env.SUPERCODE_RELEASE_RECEIPT;
+    if (source) env.SUPERCODE_SOURCE_CANDIDATE = realpathSync(source);
+    if (release) env.SUPERCODE_RELEASE_RECEIPT = release;
+    release = machinePublishedBinding(env)?.receipt ?? null;
+    await installHostRuntime({ directory: host, environment: env, frozen: existsSync(resolve(host, 'pnpm-lock.yaml')),
+      registry, archive });
+    const keeper = resolve(host, 'node_modules/create-open-autonomy/keeper/install-owner.ts');
+    if (!existsSync(keeper)) throw new Error('the prepared kit predates serving install handovers');
+    const kit = JSON.parse(readFileSync(resolve(host, 'kit.json'), 'utf8'));
+    const { agentHarness, readAgent } = await import(resolve(host, 'agent.ts'));
+    const setup = readAgent(snapshot);
+    if (!setup || (kit.kit !== 'ir' && agentHarness(setup) === 'hermes')) throw new Error('this candidate lacks the native gateway readiness protocol; the serving install was preserved');
+    const identity = runtimeInstallIdentity({ directory: host, environment: env, registry, archive });
+    writeFileSync(resolve(host, 'node_modules/.open-autonomy-install'), `${identity}\n`);
+    assertCompleteSource(snapshot, commit);
+    const receipt: InstallReceipt = { version: 1, kind: 'open-autonomy-install', home, sourceProject: project, project: snapshot,
+      entry: resolve(host, 'start.ts'), revision: commit, kitVersion: kit.version, runtimeIdentity: identity, source, release, registry, archive: archive ?? null,
+      receipt: resolve(directory, 'install.json'), initiator: await installInitiator(environment, supercodeRootOf(source, release)) };
+    writeFileSync(receipt.receipt, JSON.stringify(receipt) + '\n', { mode: 0o600 });
+    return receipt;
+  } finally { closeSync(held); }
 }
 export function readInstall(path: string, home: string): InstallReceipt {
   path = realpathSync(path); home = realpathSync(home);
@@ -161,11 +165,13 @@ export function readInstall(path: string, home: string): InstallReceipt {
 // one that serving generation replaced (its rollback) and every generation a running process still uses: its command
 // line, working directory or an open file lies inside it, the keeper's own generation included. Every other generation
 // whose receipt names this home and was written before the serving one's is removed, failed preparations with a
-// receipt included; one prepared after it waits for the next activation, and a directory with no such receipt is never
-// touched. As ADR 0031 has retirement, it names exact directories and exact worktree registrations, and never stops a
-// process. The running processes are read again before each removal; a reading that is not complete (a non-zero
-// answer, or one that does not show this process) counts as unread, and then nothing is removed. Each generation gets
-// one report line: kept, kept for now or retired.
+// receipt included; one prepared after it waits for the next activation. A generation with no receipt is a preparation
+// that failed or was interrupted before writing one, and goes on the same terms once it was last written before the
+// serving receipt: a preparation still filling it holds it open, so it counts as a process that uses it. A generation
+// whose receipt names another home or cannot be read is never touched. As ADR 0031 has retirement, it names exact
+// directories and exact worktree registrations, and never stops a process. The running processes are read again before
+// each removal; a reading that is not complete (a non-zero answer, or one that does not show this process) counts as
+// unread, and then nothing is removed. Each generation gets one report line: kept, kept for now or retired.
 const GENERATION = /^[0-9a-f]{12}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export async function retireInstalls({ home, project, serving, rollback }: { home: string; project: string; serving: string; rollback: string | null }): Promise<string[]> {
   home = realpathSync(home);
@@ -213,9 +219,10 @@ export async function retireInstalls({ home, project, serving, rollback }: { hom
     const directory = join(installs, name);
     if (directory === current) { report.push(`kept: ${directory} (serving)`); continue; }
     if (directory === replaced) { report.push(`kept: ${directory} (the generation the serving one replaced; its rollback)`); continue; }
-    if (!GENERATION.test(name) || !lstatSync(directory, { throwIfNoEntry: false })?.isDirectory()) continue;
-    const at = written(directory);
-    if (at === null) { report.push(`kept: ${directory} (no install receipt names this home)`); continue; }
+    const entry = lstatSync(directory, { throwIfNoEntry: false });
+    if (!GENERATION.test(name) || !entry?.isDirectory()) continue;
+    const at = existsSync(join(directory, 'install.json')) ? written(directory) : entry.mtimeMs;
+    if (at === null) { report.push(`kept: ${directory} (its install receipt does not name this home)`); continue; }
     if (at >= newest) { report.push(`kept for now: ${directory} (prepared after the serving generation; the next activation decides)`); continue; }
     let pid = user(seen, name);
     if (pid === null) {
